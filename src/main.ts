@@ -1,38 +1,132 @@
 import { app, BrowserWindow } from 'electron';
 import path from 'path';
+import fs from 'fs';
+import net from 'net';
+import { spawn, ChildProcess } from 'child_process';
+import axios from 'axios';
+import AdmZip from 'adm-zip';
 
 // Handle creating/removing shortcuts on Windows when installing/uninstalling.
 if (require('electron-squirrel-startup')) {
   app.quit();
 }
+let pythonProcess: ChildProcess | null = null;
+const host = '127.0.0.1'; // Replace with the desired IP address
+const port = 8188; // Replace with the port number your server is running on
+const comfyUIVersion = 'v0.0.6';
+const comfyUIUrl = `https://github.com/comfyanonymous/ComfyUI/archive/refs/tags/${comfyUIVersion}.zip`;
+const comfyUIDir = path.join(app.getPath('userData'), 'ComfyUI-' + comfyUIVersion.slice(1));
+const appDir = app.getPath('userData')
 
 const createWindow = () => {
-  // Create the browser window.
-  const mainWindow = new BrowserWindow({
-    width: 800,
-    height: 600,
-    webPreferences: {
-      preload: path.join(__dirname, 'preload.js'),
-    },
-  });
+    // Create the browser window.
+    const mainWindow = new BrowserWindow({
+      title: 'ComfyUI',
+        width: 800,
+      height: 600, 
+      webPreferences: {
+        preload: path.join(__dirname, 'preload.js'),
+        nodeIntegration: true, // Enable Node.js integration
+        contextIsolation: false,
+      },
+      
+    });
+  
+    // Load the UI from the Python server's URL
+    mainWindow.loadURL('http://localhost:8188/');
+  
+    // Open the DevTools.
+    mainWindow.webContents.openDevTools();
+  };
 
-  // and load the index.html of the app.
-  if (MAIN_WINDOW_VITE_DEV_SERVER_URL) {
-    mainWindow.loadURL(MAIN_WINDOW_VITE_DEV_SERVER_URL);
-  } else {
-    mainWindow.loadFile(path.join(__dirname, `../renderer/${MAIN_WINDOW_VITE_NAME}/index.html`));
+const downloadComfyUI = async () => {
+  const response = await axios.get(comfyUIUrl, { responseType: 'arraybuffer' });
+  const zip = new AdmZip(response.data);
+  zip.extractAllTo(appDir, true);
+};
+
+
+const isPortInUse = (host: string, port: number): Promise<boolean> => {
+    return new Promise((resolve) => {
+      const server = net.createServer();
+  
+      server.once('error', (err: NodeJS.ErrnoException) => {
+        if (err.code === 'EADDRINUSE') {
+          resolve(true);
+        } else {
+          resolve(false);
+        }
+      });
+  
+      server.once('listening', () => {
+        server.close();
+        resolve(false);
+      });
+  
+      server.listen(port, host);
+    });
+  };
+  
+
+const launchPythonServer = async () => {
+    const isServerRunning = await isPortInUse(host, port);
+  if (isServerRunning) {
+    console.log('Python server is already running');
+    return Promise.resolve();
   }
 
-  // Open the DevTools.
-  mainWindow.webContents.openDevTools();
+  console.log('Launching Python server...');
+    return new Promise<void>((resolve, reject) => {
+        pythonProcess = spawn('conda', ['run', '-n', 'comfy-env', 'python', 'main.py', '--front-end-version', 'Comfy-Org/ComfyUI_frontend@latest'], {
+          cwd: comfyUIDir,
+        });
+    
+        pythonProcess.stdout.pipe(process.stdout);
+        pythonProcess.stderr.pipe(process.stderr);
+    
+        const checkInterval = 1000; // Check every 1 second
+    
+        const checkServerReady = async () => {
+          const isReady = await isPortInUse(host, port);
+          if (isReady) {
+            console.log('Python server is ready');
+            resolve();
+          } else {
+            setTimeout(checkServerReady, checkInterval);
+          }
+        };
+    
+        checkServerReady();
+      });
 };
+  
 
 // This method will be called when Electron has finished
 // initialization and is ready to create browser windows.
 // Some APIs can only be used after this event occurs.
-app.on('ready', createWindow);
+app.on('ready', async () => {
+  if (!fs.existsSync(comfyUIDir)) {
+    console.log('ComfyUI not found. Downloading...');
+    await downloadComfyUI();
+    console.log('ComfyUI downloaded successfully.');
+  }
 
-// Quit when all windows are closed, except on macOS. There, it's common
+  await launchPythonServer();
+  createWindow();
+});
+
+const killPythonServer = () => {
+    if (pythonProcess) {
+      pythonProcess.kill();
+      pythonProcess = null;
+    }
+  };
+
+  app.on('will-quit', () => {
+    killPythonServer();
+  });
+
+  // Quit when all windows are closed, except on macOS. There, it's common
 // for applications and their menu bar to stay active until the user quits
 // explicitly with Cmd + Q.
 app.on('window-all-closed', () => {
