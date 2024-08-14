@@ -7,11 +7,25 @@ import { VitePlugin } from '@electron-forge/plugin-vite';
 import { FusesPlugin } from '@electron-forge/plugin-fuses';
 import { FuseV1Options, FuseVersion } from '@electron/fuses';
 
+console.log("Apple id is: ", process.env.APPLE_ID);
+
 const config: ForgeConfig = {
   packagerConfig: {
     asar: true,
+    osxSign: {
+        identity: 'Developer ID Application: Junhan Huang (9U23L6BV7T)',
+    },
+    extraResource: [
+        "../ComfyUI"
+        ],
+    osxNotarize: {
+        appleId: process.env.APPLE_ID,
+        appleIdPassword: process.env.APPLE_PASSWORD,
+        teamId: process.env.APPLE_TEAM_ID
+      }
   },
   rebuildConfig: {},
+  hooks: {},
   makers: [new MakerSquirrel({}), new MakerZIP({}, ['darwin']), new MakerRpm({}), new MakerDeb({})],
   plugins: [
     new VitePlugin({
