@@ -1,10 +1,7 @@
 import { app, BrowserWindow } from 'electron';
 import path from 'path';
-import fs from 'fs';
 import net from 'net';
 import { spawn, ChildProcess } from 'child_process';
-import axios from 'axios';
-import AdmZip from 'adm-zip';
 
 // Handle creating/removing shortcuts on Windows when installing/uninstalling.
 if (require('electron-squirrel-startup')) {
@@ -13,10 +10,6 @@ if (require('electron-squirrel-startup')) {
 let pythonProcess: ChildProcess | null = null;
 const host = '127.0.0.1'; // Replace with the desired IP address
 const port = 8188; // Replace with the port number your server is running on
-const comfyUIVersion = 'v0.0.6';
-const comfyUIUrl = `https://github.com/comfyanonymous/ComfyUI/archive/refs/tags/${comfyUIVersion}.zip`;
-const comfyUIDir = path.join(app.getPath('userData'), 'ComfyUI-' + comfyUIVersion.slice(1));
-const appDir = app.getPath('userData')
 
 const createWindow = () => {
     // Create the browser window.
@@ -38,12 +31,6 @@ const createWindow = () => {
     // Open the DevTools.
     mainWindow.webContents.openDevTools();
   };
-
-const downloadComfyUI = async () => {
-  const response = await axios.get(comfyUIUrl, { responseType: 'arraybuffer' });
-  const zip = new AdmZip(response.data);
-  zip.extractAllTo(appDir, true);
-};
 
 
 const isPortInUse = (host: string, port: number): Promise<boolean> => {
@@ -70,16 +57,29 @@ const isPortInUse = (host: string, port: number): Promise<boolean> => {
 
 const launchPythonServer = async () => {
     const isServerRunning = await isPortInUse(host, port);
-  if (isServerRunning) {
-    console.log('Python server is already running');
-    return Promise.resolve();
-  }
+    if (isServerRunning) {
+        console.log('Python server is already running');
+        return Promise.resolve();
+    }
 
-  console.log('Launching Python server...');
+    console.log('Launching Python server...');
     return new Promise<void>((resolve, reject) => {
-        pythonProcess = spawn('conda', ['run', '-n', 'comfy-env', 'python', 'main.py', '--front-end-version', 'Comfy-Org/ComfyUI_frontend@latest'], {
-          cwd: comfyUIDir,
-        });
+        let executablePath: string;
+
+        if (app.isPackaged) {
+            // Production: use the resource path
+            executablePath = path.join(process.resourcesPath, 'ComfyUI', 'ComfyUI');
+        } else {
+            // Development: use the path relative to the current directory
+            executablePath = path.join(app.getAppPath(), 'ComfyUI', 'ComfyUI');
+
+        }
+
+        console.log('Attempting to start ComfyUI from:', executablePath);
+
+        pythonProcess = spawn(executablePath, ['--front-end-version', 'Comfy-Org/ComfyUI_frontend@latest'], {
+            stdio: 'pipe',
+          });
     
         pythonProcess.stdout.pipe(process.stdout);
         pythonProcess.stderr.pipe(process.stderr);
@@ -105,12 +105,6 @@ const launchPythonServer = async () => {
 // initialization and is ready to create browser windows.
 // Some APIs can only be used after this event occurs.
 app.on('ready', async () => {
-  if (!fs.existsSync(comfyUIDir)) {
-    console.log('ComfyUI not found. Downloading...');
-    await downloadComfyUI();
-    console.log('ComfyUI downloaded successfully.');
-  }
-
   await launchPythonServer();
   createWindow();
 });
