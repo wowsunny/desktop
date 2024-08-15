@@ -13,7 +13,7 @@ const config: ForgeConfig = {
     asar: true,
     osxSign: {},
     extraResource: [
-        "./ComfyUI/ComfyUI.sh"
+        'ComfyUI/**/*'
     ],
     osxNotarize: {
         appleId: process.env.APPLE_ID,

@@ -67,14 +67,9 @@ const launchPythonServer = async () => {
         let executablePath: string;
 
         if (app.isPackaged) {
-            // TODO(robinhuang): Revert.
-            // Production: use the bundled Python package
-            // executablePath = path.join(process.resourcesPath, 'ComfyUI', 'ComfyUI');
-            // pythonProcess = spawn(executablePath, ['--front-end-version', 'Comfy-Org/ComfyUI_frontend@latest'], {
-            //     stdio: 'pipe',
-            // });
-            executablePath = path.join(app.getAppPath(), 'ComfyUI', 'ComfyUI.sh');
-            pythonProcess = spawn(executablePath, {
+            //Production: use the bundled Python package
+            executablePath = path.join(process.resourcesPath, 'ComfyUI', 'ComfyUI');
+            pythonProcess = spawn(executablePath, ['--front-end-version', 'Comfy-Org/ComfyUI_frontend@latest'], {
                 stdio: 'pipe',
             });
         } else {
@@ -100,7 +95,7 @@ const launchPythonServer = async () => {
           }
         };
     
-        //checkServerReady();
+        checkServerReady();
       });
 };
   
