@@ -6,17 +6,15 @@ import { MakerRpm } from '@electron-forge/maker-rpm';
 import { VitePlugin } from '@electron-forge/plugin-vite';
 import { FusesPlugin } from '@electron-forge/plugin-fuses';
 import { FuseV1Options, FuseVersion } from '@electron/fuses';
+import verifyEnvVariables from './vertify-env';
 
-console.log("Apple id is: ", process.env.APPLE_ID);
 
 const config: ForgeConfig = {
   packagerConfig: {
     asar: true,
-    osxSign: {
-        identity: 'Developer ID Application: Junhan Huang (9U23L6BV7T)',
-    },
+    osxSign: {},
     extraResource: [
-        "../ComfyUI"
+        "./ComfyUI"
         ],
     osxNotarize: {
         appleId: process.env.APPLE_ID,
@@ -25,7 +23,16 @@ const config: ForgeConfig = {
       }
   },
   rebuildConfig: {},
-  hooks: {},
+  hooks: {
+    postPackage: async (forgeConfig, packageResult) => {
+        console.log('Post-package hook started');
+        console.log('Package result:', JSON.stringify(packageResult, null, 2));
+      },
+    readPackageJson: async (config, packageJson) => {
+        verifyEnvVariables();
+        return packageJson;
+      },
+  },
   makers: [new MakerSquirrel({}), new MakerZIP({}, ['darwin']), new MakerRpm({}), new MakerDeb({})],
   plugins: [
     new VitePlugin({
@@ -61,6 +68,19 @@ const config: ForgeConfig = {
       [FuseV1Options.OnlyLoadAppFromAsar]: true,
     }),
   ],
+  publishers:[
+  {
+    name: '@electron-forge/publisher-github',
+    platforms: ['darwin'],
+    config: {
+      repository: {
+        owner: 'comfy-org',
+        name: 'electron'
+      },
+      prerelease: false
+    }
+  }
+  ]
 };
 
 export default config;
