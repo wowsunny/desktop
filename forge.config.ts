@@ -6,7 +6,6 @@ import { MakerRpm } from '@electron-forge/maker-rpm';
 import { VitePlugin } from '@electron-forge/plugin-vite';
 import { FusesPlugin } from '@electron-forge/plugin-fuses';
 import { FuseV1Options, FuseVersion } from '@electron/fuses';
-import verifyEnvVariables from './vertify-env';
 
 
 const config: ForgeConfig = {
@@ -14,7 +13,7 @@ const config: ForgeConfig = {
     asar: true,
     osxSign: {},
     extraResource: [
-        "./ComfyUI"
+        "./ComfyUI",
         ],
     osxNotarize: {
         appleId: process.env.APPLE_ID,
@@ -29,7 +28,6 @@ const config: ForgeConfig = {
         console.log('Package result:', JSON.stringify(packageResult, null, 2));
       },
     readPackageJson: async (config, packageJson) => {
-        verifyEnvVariables();
         return packageJson;
       },
   },
