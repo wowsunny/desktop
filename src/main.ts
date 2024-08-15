@@ -67,19 +67,18 @@ const launchPythonServer = async () => {
         let executablePath: string;
 
         if (app.isPackaged) {
-            // Production: use the resource path
+            // Production: use the bundled Python package
             executablePath = path.join(process.resourcesPath, 'ComfyUI', 'ComfyUI');
+            pythonProcess = spawn(executablePath, ['--front-end-version', 'Comfy-Org/ComfyUI_frontend@latest'], {
+                stdio: 'pipe',
+            });
         } else {
-            // Development: use the path relative to the current directory
-            executablePath = path.join(app.getAppPath(), 'ComfyUI', 'ComfyUI');
-
+            // Development: use the fake Python server
+            executablePath = path.join(app.getAppPath(), 'ComfyUI', 'ComfyUI.sh');
+            pythonProcess = spawn(executablePath, {
+                stdio: 'pipe',
+            });
         }
-
-        console.log('Attempting to start ComfyUI from:', executablePath);
-
-        pythonProcess = spawn(executablePath, ['--front-end-version', 'Comfy-Org/ComfyUI_frontend@latest'], {
-            stdio: 'pipe',
-          });
     
         pythonProcess.stdout.pipe(process.stdout);
         pythonProcess.stderr.pipe(process.stderr);
@@ -96,7 +95,7 @@ const launchPythonServer = async () => {
           }
         };
     
-        checkServerReady();
+        //checkServerReady();
       });
 };
   
