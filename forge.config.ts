@@ -75,7 +75,7 @@ const config: ForgeConfig = {
         owner: 'comfy-org',
         name: 'electron'
       },
-      prerelease: false
+      prerelease: true
     }
   }
   ]
