@@ -68,7 +68,7 @@ const launchPythonServer = async () => {
 
         if (app.isPackaged) {
             //Production: use the bundled Python package
-            executablePath = path.join(process.resourcesPath, 'ComfyUIBackend', 'ComfyUI');
+            executablePath = path.join(process.resourcesPath, 'ComfyUIBackend');
             pythonProcess = spawn(executablePath);
         } else {
             // Development: use the fake Python server
