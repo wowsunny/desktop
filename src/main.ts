@@ -68,7 +68,7 @@ const launchPythonServer = async () => {
 
         if (app.isPackaged) {
             //Production: use the bundled Python package
-            executablePath = path.join(process.resourcesPath, 'ComfyUI');
+            executablePath = path.join(process.resourcesPath, 'ComfyUIBackend');
             pythonProcess = spawn(executablePath, ['--front-end-version', 'Comfy-Org/ComfyUI_frontend@latest'], {
                 stdio: 'pipe',
             });
