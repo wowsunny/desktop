@@ -11,10 +11,12 @@ import { FuseV1Options, FuseVersion } from '@electron/fuses';
 const config: ForgeConfig = {
   packagerConfig: {
     asar: true,
-    osxSign: {},
-    extraResource: [
-        'ComfyUI/**/*'
-    ],
+    osxSign: {
+      optionsForFile: (filepath) => {
+        return { entitlements: './assets/entitlements.mac.plist' };
+      },
+    },
+    extraResource: [`./assets/UI/ComfyUIBackend${process.platform == 'win32' ? '.exe' : ''}`],
     osxNotarize: {
         appleId: process.env.APPLE_ID,
         appleIdPassword: process.env.APPLE_PASSWORD,
