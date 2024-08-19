@@ -18,22 +18,27 @@ const config: ForgeConfig = {
     },
     extraResource: [`./assets/UI/ComfyUIBackend${process.platform == 'win32' ? '.exe' : ''}`],
     osxNotarize: {
-        appleId: process.env.APPLE_ID,
-        appleIdPassword: process.env.APPLE_PASSWORD,
-        teamId: process.env.APPLE_TEAM_ID
-      }
+      appleId: process.env.APPLE_ID,
+      appleIdPassword: process.env.APPLE_PASSWORD,
+      teamId: process.env.APPLE_TEAM_ID
+    }
   },
   rebuildConfig: {},
   hooks: {
     postPackage: async (forgeConfig, packageResult) => {
-        console.log('Post-package hook started');
-        console.log('Package result:', JSON.stringify(packageResult, null, 2));
-      },
+      console.log('Post-package hook started');
+      console.log('Package result:', JSON.stringify(packageResult, null, 2));
+    },
     readPackageJson: async (config, packageJson) => {
-        return packageJson;
-      },
+      return packageJson;
+    },
   },
-  makers: [new MakerSquirrel({}), new MakerZIP({}, ['darwin']), new MakerRpm({}), new MakerDeb({})],
+  makers: [
+    new MakerSquirrel({}),
+    new MakerZIP({}, ['darwin']),
+    new MakerRpm({}),
+    new MakerDeb({}),
+  ],
   plugins: [
     new VitePlugin({
       // `build` can specify multiple entry builds, which can be Main process, Preload scripts, Worker process, etc.
@@ -68,19 +73,19 @@ const config: ForgeConfig = {
       [FuseV1Options.OnlyLoadAppFromAsar]: true,
     }),
   ],
-  publishers:[
-  {
-    name: '@electron-forge/publisher-github',
-    platforms: ['darwin'],
-    config: {
-      repository: {
-        owner: 'comfy-org',
-        name: 'electron'
+  publishers: [
+    {
+      name: '@electron-forge/publisher-github',
+      platforms: ['darwin'],
+      config: {
+        repository: {
+          owner: 'comfy-org',
+          name: 'electron',
+        },
+        prerelease: true,
       },
-      prerelease: true
-    }
-  }
-  ]
+    },
+  ],
 };
 
 export default config;

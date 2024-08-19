@@ -24,10 +24,10 @@ jobs:
       - run: npm i
       - name: Download and prepare ComfyUI
         run: |
-          curl -L -o comfyui-mac.tar.gz https://github.com/Comfy-Org/python-dependencies/releases/download/mac-arm-deps-py3.12-2024-08-14-200858/mac_arm_python_env.tar.gz
+          curl -L -o comfyui-mac.tar.gz https://github.com/Comfy-Org/python-dependencies/releases/download/mac-arm-deps-py3.12-2024-08-16-050751/mac_arm_python_env.tar.gz
           tar -xzvf comfyui-mac.tar.gz
           rm -rf ComfyUI
-          mv dist/ComfyUI .
+          mv dist/ComfyUI ./assets/UI/ComfyUIBackend
           rm -rf comfyui-mac.tar.gz
       - name: Publish app
         env:
@@ -36,4 +36,4 @@ jobs:
           APPLE_ID: ${{ secrets.APPLE_ID }}
           APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
-        run: npm run publish
+        run: npm run publish -- --arch="x64","arm64"
