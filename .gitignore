@@ -94,3 +94,5 @@ out/
 # ComfyUI
 comfyui-prebuilt
 comfyui
+
+.vscode/*
