@@ -16,7 +16,7 @@ const config: ForgeConfig = {
         return { entitlements: './assets/entitlements.mac.plist' };
       },
     },
-    extraResource: [`./assets/UI/ComfyUIBackend${process.platform == 'win32' ? '.exe' : ''}`],
+    extraResource: ['./assets/UI'],
     osxNotarize: {
       appleId: process.env.APPLE_ID,
       appleIdPassword: process.env.APPLE_PASSWORD,

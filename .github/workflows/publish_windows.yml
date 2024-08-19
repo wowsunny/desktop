@@ -17,30 +17,30 @@ jobs:
       - run: npm i
       - name: Download and prepare ComfyUI
         run: |
-          curl -L -o comfyui-win.tar.gz https://github.com/Comfy-Org/python-dependencies/releases/download/windowsbuild/windowsbuild.tar.gz
-          tar -xzvf comfyui-win.tar.gz
-          rm -rf ComfyUI
-          mv dist/ComfyUI .
-          rm -rf comfyui-win.tar.gz
+          curl -L -o comfyui-win.7z https://github.com/Comfy-Org/python-dependencies/releases/download/embedded-windows-deps-cu11.8-py11.9-5/ComfyUI_windows_portable.7z
+          ls
+          7z -x comfyui-win.7z -oAssets/UI/ComfyUI/
+          rm -rf comfyui-win.7z
       - name: Make app
         env:
           DEBUG: electron-forge:*
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: npm run publish --dry-run
-      - name: Sign files with Trusted Signing
-          uses: azure/trusted-signing-action@v0.4.0
-          with:
-            azure-tenant-id: ${{ secrets.AZURE_TENANT_ID }}
-            azure-client-id: ${{ secrets.AZURE_CLIENT_ID }}
-            azure-client-secret: ${{ secrets.AZURE_CLIENT_SECRET }}
-            endpoint: https://eus.codesigning.azure.net/
-            trusted-signing-account-name: vscx-codesigning
-            certificate-profile-name: vscx-certificate-profile
-            files-folder: ${{ github.workspace }}\out\
-            files-folder-filter: exe,dll
-            file-digest: SHA256
-            timestamp-rfc3161: http://timestamp.acs.microsoft.com
-            timestamp-digest: SHA256
+      # Windows Code Sign: 
+      #- name: Sign files with Trusted Signing
+      #    uses: azure/trusted-signing-action@v0.4.0
+      #    with:
+      #      azure-tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+      #      azure-client-id: ${{ secrets.AZURE_CLIENT_ID }}
+      #      azure-client-secret: ${{ secrets.AZURE_CLIENT_SECRET }}
+      #      endpoint: https://eus.codesigning.azure.net/
+      #      trusted-signing-account-name: vscx-codesigning
+      #      certificate-profile-name: vscx-certificate-profile
+      #      files-folder: ${{ github.workspace }}\out\
+      #      files-folder-filter: exe,dll
+      #      file-digest: SHA256
+      #      timestamp-rfc3161: http://timestamp.acs.microsoft.com
+      #      timestamp-digest: SHA256
       - name: publish app
         env:
           DEBUG: electron-forge:*
