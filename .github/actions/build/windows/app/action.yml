@@ -1,0 +1,49 @@
+name: Windows Build App
+description: Electron-Forge Build/Sign/publish
+inputs:
+  DIGICERT_FINGERPRINT:
+    required: true
+    type: string
+  GITHUB_TOKEN:
+    required: true
+    type: string
+  sign-and-publish:
+    description: 'Sign the executable and publish to release page'
+    default: false
+    required: false
+    type: boolean
+runs:
+  using: composite
+  steps:
+    - name: Use Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: 20
+    - run: yarn install
+      shell: cmd
+    - name: Download and prepare ComfyUI
+      run: |
+        curl -L -o comfyui-win.7z https://github.com/Comfy-Org/python-dependencies/releases/download/embedded-windows-deps-cu11.8-py11.9-5/ComfyUI_windows_portable.7z
+        7z x comfyui-win.7z -odist/
+        move dist/ComfyUI_windows_portable/ComfyUI assets/UI/
+        move dist/ComfyUI_windows_portable/python_embedded assets/UI/
+        cd assets/UI/ComfyUI && ls 
+      shell: cmd
+    - name: Make app
+      shell: powershell
+      env:
+        DIGICERT_FINGERPRINT: ${{ inputs.DIGICERT_FINGERPRINT }}
+        DEBUG: electron-forge:*
+        PUBLISH: ${{ inputs.sign-and-publish }}
+        GITHUB_TOKEN: ${{ inputs.GITHUB_TOKEN }}
+      run: npm run ${{inputs.sign-and-publish == true && 'publish' || 'make'}}
+    - name: Print SignLogs
+      if: ${{inputs.sign-and-publish == true && always()}} 
+      continue-on-error: true 
+      shell: powershell
+      run: cd $HOME ; gc .signingmanager\logs\smksp.log
+    - name: verify signing
+      if: ${{inputs.sign-and-publish == true}}
+      run:
+        signtool verify /v /pa out/ComfyUI-win32-x64/ComfyUI.exe
+      shell: cmd

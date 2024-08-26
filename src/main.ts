@@ -80,7 +80,7 @@ const launchPythonServer = async () => {
         stdio: 'pipe',
       });
     }
-
+    
     pythonProcess.stdout.pipe(process.stdout);
     pythonProcess.stderr.pipe(process.stderr);
 
@@ -98,9 +98,8 @@ const launchPythonServer = async () => {
 
     checkServerReady();
   });
-
+s
 };
-
 
 // This method will be called when Electron has finished
 // initialization and is ready to create browser windows.
