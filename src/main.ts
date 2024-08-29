@@ -4,9 +4,13 @@ import net from 'net';
 import { spawn, ChildProcess } from 'child_process';
 
 // Handle creating/removing shortcuts on Windows when installing/uninstalling.
-if (require('electron-squirrel-startup')) {
-  app.quit();
-}
+import('electron-squirrel-startup').then(ess => {
+  const {default: check} = ess;
+  if (check) {
+    app.quit();
+  }
+});
+
 let pythonProcess: ChildProcess | null = null;
 const host = '127.0.0.1'; // Replace with the desired IP address
 const port = 8188; // Replace with the port number your server is running on
@@ -80,7 +84,7 @@ const launchPythonServer = async () => {
         stdio: 'pipe',
       });
     }
-    
+
     pythonProcess.stdout.pipe(process.stdout);
     pythonProcess.stderr.pipe(process.stderr);
 
@@ -98,7 +102,6 @@ const launchPythonServer = async () => {
 
     checkServerReady();
   });
-
 };
 
 // This method will be called when Electron has finished
