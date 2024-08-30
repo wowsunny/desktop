@@ -2,9 +2,11 @@ name: Windows Build App
 description: Electron-Forge Build/Sign/publish
 inputs:
   DIGICERT_FINGERPRINT:
+    description: 'DigiCert SHA256 Fingerprint'
     required: true
     type: string
   GITHUB_TOKEN:
+    description: 'GitHub Token'
     required: true
     type: string
   sign-and-publish:
@@ -20,19 +22,24 @@ inputs:
 runs:
   using: composite
   steps:
-    - name: Use Node.js
-      uses: actions/setup-node@v4
+    - name: Use Node.js 20.x
+      uses: JP250552/setup-node@feature/corepack
       with:
-        node-version: 20
-    - run: yarn install
+        node-version: "20.x"
+        corepack: true
+    - run: yarn install --immutable
       shell: cmd
-    - name: Download and prepare ComfyUI
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.12'
+    - name: Install ComfyUI and create standalone package
       run: |
-        curl -L -o comfyui-win.7z https://github.com/Comfy-Org/python-dependencies/releases/download/embedded-windows-deps-cu11.8-py11.9-5/ComfyUI_windows_portable.7z
-        7z x comfyui-win.7z -odist/
-        move dist/ComfyUI_windows_portable/ComfyUI assets/UI/
-        move dist/ComfyUI_windows_portable/python_embedded assets/UI/
-        for /D /R %%i in (*pycache*) do rmdir /s /q "%%~i
+        pip install comfy-cli
+        cd assets
+        comfy --skip-prompt --workspace ./ComfyUI install --fast-deps --nvidia --cuda-version 12.1
+        comfy --workspace ./ComfyUI standalone  --platform windows --proc x86_64
+        rm -rf python cpython*.tar.gz
       shell: cmd
     - name: Make app
       shell: powershell
@@ -41,10 +48,10 @@ runs:
         DEBUG: electron-forge:*
         PUBLISH: ${{ inputs.sign-and-publish }}
         GITHUB_TOKEN: ${{ inputs.GITHUB_TOKEN }}
-      run: npm run ${{inputs.sign-and-publish == true && 'publish' || 'make'}} -- ${{inputs.build-targets}}
+      run: yarn run ${{inputs.sign-and-publish == true && 'publish' || 'make'}} -- ${{inputs.build-targets}}
     - name: Print SignLogs
-      if: ${{inputs.sign-and-publish == true && always()}} 
-      continue-on-error: true 
+      if: ${{inputs.sign-and-publish == true && always()}}
+      continue-on-error: true
       shell: powershell
       run: cd $HOME ; gc .signingmanager\logs\smksp.log
     - name: verify signing
