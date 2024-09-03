@@ -19,11 +19,13 @@ const config: ForgeConfig = {
       },
     }},
     osxSign: {
+      identity: process.env.SIGN_ID,
       optionsForFile: (filepath) => {
+        console.log('~');
         return { entitlements: './assets/entitlements.mac.plist' };
-      },
+      }
     },
-    extraResource: ['./assets/UI', './assets/ComfyUI', './assets/python.tgz'],
+    extraResource: ['./assets/UI', './assets/ComfyUI', process.platform === 'darwin' ? './assets/python' : './assets/python.tgz'],
     osxNotarize: {
       appleId: process.env.APPLE_ID,
       appleIdPassword: process.env.APPLE_PASSWORD,

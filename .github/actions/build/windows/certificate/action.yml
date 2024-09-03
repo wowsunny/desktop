@@ -1,6 +1,6 @@
 name: Certificate Setup
 description: Sets up DigiCert and make it ready for signing
-inputs:
+inputes:
   DIGICERT_AUTHENTICATION_CERTIFICATE_BASE64:
     required: true
     type: string
