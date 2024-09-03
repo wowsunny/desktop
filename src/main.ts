@@ -87,21 +87,16 @@ const launchPythonServer = async () => {
             pythonProcess = spawn(executablePath, { shell: true });
         }
     } else {
-        executablePath = path.join(process.resourcesPath, 'UI', packagedComfyUIExecutable);
-        pythonProcess = spawn(executablePath, { shell: true });
-    }
-    } else {
       // Development: use the fake Python server
       if (process.platform == 'darwin') {
         // On macOS, the Python executable is inside the app bundle
         const pythonPath = path.join(app.getAppPath(), 'assets', 'python', 'bin', 'python');
         pythonProcess = spawn(pythonPath, [scriptPath]);
-    } else {
-        executablePath = path.join(app.getAppPath(), 'ComfyUI', 'ComfyUI.sh');
-        pythonProcess = spawn(executablePath, {
-            stdio: 'pipe',
-        });
-    }
+      }
+      else {
+        executablePath = path.join(process.resourcesPath, 'UI', packagedComfyUIExecutable);
+        pythonProcess = spawn(executablePath, { shell: true });
+      }
     }
     
     pythonProcess.stdout.pipe(process.stdout);
