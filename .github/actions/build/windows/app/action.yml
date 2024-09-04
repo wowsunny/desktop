@@ -26,8 +26,8 @@ runs:
         curl -L -o comfyui-win.7z https://github.com/Comfy-Org/python-dependencies/releases/download/embedded-windows-deps-cu11.8-py11.9-5/ComfyUI_windows_portable.7z
         7z x comfyui-win.7z -odist/
         move dist/ComfyUI_windows_portable/ComfyUI assets/
-        move dist/ComfyUI_windows_portable/python_embedded assets/
-        cd assets/ComfyUI && ls 
+        move dist/ComfyUI_windows_portable/python_embedded assets/python
+        cd assets && ls 
       shell: cmd
     - name: Make app
       shell: powershell
