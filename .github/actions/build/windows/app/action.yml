@@ -27,7 +27,7 @@ runs:
         7z x comfyui-win.7z -odist/
         move dist/ComfyUI_windows_portable/ComfyUI assets/
         move dist/ComfyUI_windows_portable/python_embedded assets/
-        cd assets/UI/ComfyUI && ls 
+        cd assets/ComfyUI && ls 
       shell: cmd
     - name: Make app
       shell: powershell
