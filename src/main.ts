@@ -1,8 +1,9 @@
 import { spawn, ChildProcess } from 'node:child_process';
-import { access, mkdir, readdir, rm } from 'node:fs/promises';
+import * as fs from 'node:fs/promises';
 import net from 'node:net';
 import path from 'node:path';
 
+import dotenv from "dotenv";
 import { app, BrowserWindow } from 'electron';
 // Handle creating/removing shortcuts on Windows when installing/uninstalling.
 import('electron-squirrel-startup').then(ess => {
@@ -64,7 +65,9 @@ const isPortInUse = (host: string, port: number): Promise<boolean> => {
 };
 
 
-const launchPythonServer = async () => {
+const launchPythonServer = async (args: {userResourcesPath: string, appResourcesPath: string}) => {
+  const {userResourcesPath, appResourcesPath} = args;
+
   const isServerRunning = await isPortInUse(host, port);
   if (isServerRunning) {
     console.log('Python server is already running');
@@ -74,37 +77,14 @@ const launchPythonServer = async () => {
   console.log('Launching Python server...');
 
   return new Promise<void>(async (resolve, reject) => {
-    const {userResourcesPath, appResourcesPath} = app.isPackaged ? {
-      // production: install python to per-user application data dir
-      userResourcesPath: app.getPath('appData'),
-      appResourcesPath: process.resourcesPath,
-    } : {
-      // development: install python to in-tree assets dir
-      userResourcesPath: path.join(app.getAppPath(), 'assets'),
-      appResourcesPath: path.join(app.getAppPath(), 'assets'),
-    }
+    const pythonRootPath = path.join(userResourcesPath, 'python');
+    const pythonInterpreterPath = process.platform==='win32' ? path.join(pythonRootPath, 'python.exe') : path.join(pythonRootPath, 'bin', 'python');
+    const pythonRecordPath = path.join(pythonRootPath, "INSTALLER");
+    const scriptPath = path.join(appResourcesPath, 'ComfyUI', 'main.py');
+    const comfyMainCmd = [scriptPath, ...(process.env.COMFYUI_CPU_ONLY === "true" ? ["--cpu"] : [])];
 
-    try {
-      await mkdir(userResourcesPath);
-    } catch {
-      null;
-    }
-    console.log(`userResourcesPath: ${userResourcesPath}`);
-    console.log(`appResourcesPath: ${appResourcesPath}`);
-
-    const {pythonPath, scriptPath} = process.platform==='win32' ?  {
-      pythonPath: path.join(userResourcesPath, 'python', 'python.exe'),
-      scriptPath: path.join(appResourcesPath, 'ComfyUI', 'main.py'),
-    } : {
-      pythonPath: path.join(userResourcesPath, 'python', 'bin', 'python'),
-      scriptPath: path.join(appResourcesPath, 'ComfyUI', 'main.py'),
-    };
-
-    console.log('Python Path:', pythonPath);
-    console.log('Script Path:', scriptPath);
-
-    access(pythonPath).then(async () => {
-      pythonProcess = spawn(pythonPath, [scriptPath], {
+    const spawnPython = async () => {
+      pythonProcess = spawn(pythonInterpreterPath, comfyMainCmd, {
         cwd: path.dirname(scriptPath)
       });
 
@@ -114,37 +94,41 @@ const launchPythonServer = async () => {
       pythonProcess.stdout.on('data', (data) => {
         console.log(`stdout: ${data}`);
       });
-    }).catch(async () => {
+    }
+
+    try {
+      // check for existence of both interpreter and INSTALLER record to ensure a correctly installed python env
+      await Promise.all([fs.access(pythonInterpreterPath), fs.access(pythonRecordPath)]);
+      spawnPython();
+    } catch {
       console.log('Running one-time python installation on first startup...');
+      // clean up any possible existing non-functional python env
+      try {
+        await fs.rm(pythonRootPath, {recursive: true});
+      } catch {null;}
+
       const pythonTarPath = path.join(appResourcesPath, 'python.tgz');
       await tar.extract({file: pythonTarPath, cwd: userResourcesPath, strict: true});
 
-      const pythonRootPath = path.join(userResourcesPath, 'python');
       const wheelsPath = path.join(pythonRootPath, 'wheels');
-      const rehydrateCmd = ['-m', 'uv', 'pip', 'install', '--no-index', '--no-deps', ...(await readdir(wheelsPath)).map(x => path.join(wheelsPath, x))];
-      const rehydrateProc = spawn(pythonPath, rehydrateCmd, {cwd: wheelsPath});
+      const rehydrateCmd = ['-m', 'uv', 'pip', 'install', '--no-index', '--no-deps', ...(await fs.readdir(wheelsPath)).map(x => path.join(wheelsPath, x))];
+      const rehydrateProc = spawn(pythonInterpreterPath, rehydrateCmd, {cwd: wheelsPath});
 
       rehydrateProc.on("exit", code => {
+        // write an INSTALLER record on sucessful completion of rehydration
+        fs.writeFile(pythonRecordPath, "ComfyUI");
+
         if (code===0) {
           // remove the now installed wheels
-          rm(wheelsPath, {recursive: true});
+          fs.rm(wheelsPath, {recursive: true});
           console.log(`Python successfully installed to ${pythonRootPath}`);
 
-          pythonProcess = spawn(pythonPath, [scriptPath], {
-            cwd: path.dirname(scriptPath)
-          });
-
-          pythonProcess.stderr.on('data', (data) => {
-            console.error(`stderr: ${data}`);
-          });
-          pythonProcess.stdout.on('data', (data) => {
-            console.log(`stdout: ${data}`);
-          });
+          spawnPython();
         } else {
           console.log(`Rehydration of python bundle exited with code ${code}`);
         }
       });
-    });
+    }
 
     const checkInterval = 1000; // Check every 1 second
 
@@ -167,8 +151,33 @@ const launchPythonServer = async () => {
 // initialization and is ready to create browser windows.
 // Some APIs can only be used after this event occurs.
 app.on('ready', async () => {
+  const {userResourcesPath, appResourcesPath} = app.isPackaged ? {
+    // production: install python to per-user application data dir
+    userResourcesPath: app.getPath('appData'),
+    appResourcesPath: process.resourcesPath,
+  } : {
+    // development: install python to in-tree assets dir
+    userResourcesPath: path.join(app.getAppPath(), 'assets'),
+    appResourcesPath: path.join(app.getAppPath(), 'assets'),
+  }
+
+  console.log(`userResourcesPath: ${userResourcesPath}`);
+  console.log(`appResourcesPath: ${appResourcesPath}`);
+
   try {
-    await launchPythonServer();
+    dotenv.config({path: path.join(appResourcesPath, ".env")});
+  } catch {
+    // if no .env file, skip it
+  }
+
+  try {
+    await fs.mkdir(userResourcesPath);
+  } catch {
+    // if user-specific resources dir already exists, that is fine
+  }
+
+  try {
+    await launchPythonServer({userResourcesPath, appResourcesPath});
     createWindow();
   } catch (error) {
 
