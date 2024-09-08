@@ -4,7 +4,7 @@ import net from 'node:net';
 import path from 'node:path';
 
 import dotenv from "dotenv";
-import { app, BrowserWindow } from 'electron';
+import { app, BrowserWindow, webContents } from 'electron';
 // Handle creating/removing shortcuts on Windows when installing/uninstalling.
 import('electron-squirrel-startup').then(ess => {
   const {default: check} = ess;
@@ -36,12 +36,25 @@ const createWindow = () => {
   });
 
   // Load the UI from the Python server's URL
-  mainWindow.loadURL('http://localhost:8188/');
+  //mainWindow.loadURL('http://localhost:8188/');
+  mainWindow.loadFile(path.join(__dirname, `../renderer/${MAIN_WINDOW_VITE_NAME}/index.html`));
 
   // Open the DevTools.
-  mainWindow.webContents.openDevTools();
+  // mainWindow.webContents.openDevTools();
 };
 
+// Server Heartbeat Listener Variables
+let serverHeartBeatReference: NodeJS.Timeout = null;
+const serverHeartBeatInterval: number = 15 * 1000; //15 Seconds
+async function serverHeartBeat() {
+  const isReady = await isPortInUse(host, port);
+  if (isReady) {
+    // Getting webcontents[0] is not reliable if app started with dev window
+    webContents.getAllWebContents()[0].send("python-server-status", "active");
+  } else {
+    webContents.getAllWebContents()[0].send("python-server-status", "false");
+  }
+}
 
 const isPortInUse = (host: string, port: number): Promise<boolean> => {
   return new Promise((resolve) => {
@@ -64,6 +77,10 @@ const isPortInUse = (host: string, port: number): Promise<boolean> => {
   });
 };
 
+// Launch Python Server Variables
+const maxFailWait: number = 10 * 2000; // 10seconds
+let currentWaitTime: number = 0;
+let spawnServerTimeout: NodeJS.Timeout = null;
 
 const launchPythonServer = async (args: {userResourcesPath: string, appResourcesPath: string}) => {
   const {userResourcesPath, appResourcesPath} = args;
@@ -71,6 +88,14 @@ const launchPythonServer = async (args: {userResourcesPath: string, appResources
   const isServerRunning = await isPortInUse(host, port);
   if (isServerRunning) {
     console.log('Python server is already running');
+    // Server has been started outside the app, so attach to it.
+    setTimeout(() => {
+      // Not sure if needed but wait a few moments before sending the connect message up. 
+      webContents.getAllWebContents()[0].send("python-server-status", "active");
+    }, 5000);
+    clearInterval(serverHeartBeatReference);
+    webContents.getAllWebContents()[0].loadURL('http://localhost:8188/');
+    serverHeartBeatReference = setInterval(serverHeartBeat, serverHeartBeatInterval);
     return Promise.resolve();
   }
 
@@ -133,9 +158,21 @@ const launchPythonServer = async (args: {userResourcesPath: string, appResources
     const checkInterval = 1000; // Check every 1 second
 
     const checkServerReady = async () => {
+      currentWaitTime += 1000;
+      if (currentWaitTime > maxFailWait) {
+        //Something has gone wrong and we need to backout. 
+        clearTimeout(spawnServerTimeout);
+        reject("Python Server Failed To Start");
+      }
       const isReady = await isPortInUse(host, port);
       if (isReady) {
         console.log('Python server is ready');
+        // Start the Heartbeat listener, send connected message to Renderer and resolve promise. 
+        serverHeartBeatReference = setInterval(serverHeartBeat, serverHeartBeatInterval);
+        webContents.getAllWebContents()[0].send("python-server-status", "active");
+        //For now just replace the source of the main window to the python server
+        webContents.getAllWebContents()[0].loadURL('http://localhost:8188/');
+        clearTimeout(spawnServerTimeout);
         resolve();
       } else {
         console.log('Ping failed. Retrying...');
@@ -175,10 +212,9 @@ app.on('ready', async () => {
   } catch {
     // if user-specific resources dir already exists, that is fine
   }
-
-  try {
-    await launchPythonServer({userResourcesPath, appResourcesPath});
+  try { 
     createWindow();
+    await launchPythonServer({userResourcesPath, appResourcesPath});
   } catch (error) {
 
   }
