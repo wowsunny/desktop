@@ -2,6 +2,7 @@ import { spawn, ChildProcess } from 'node:child_process';
 import * as fs from 'node:fs/promises';
 import net from 'node:net';
 import path from 'node:path';
+import { SetupTray } from './tray';
 
 import dotenv from "dotenv";
 import { app, BrowserWindow, webContents } from 'electron';
@@ -39,6 +40,20 @@ const createWindow = () => {
   //mainWindow.loadURL('http://localhost:8188/');
   mainWindow.loadFile(path.join(__dirname, `../renderer/${MAIN_WINDOW_VITE_NAME}/index.html`));
 
+  // Set up the System Tray Icon for all platforms
+  // Returns a tray so you can set a global var to access. 
+  SetupTray(mainWindow);
+
+  // Overrides the behavior of closing the window to allow for 
+  // the python server to continue to run in the background
+  mainWindow.on('close' , (e:Electron.Event) => {
+    e.preventDefault();
+    mainWindow.hide();
+    // Mac Only Behavior
+    if (process.platform === 'darwin') {
+      app.dock.hide();
+    }
+  })
   // Open the DevTools.
   // mainWindow.webContents.openDevTools();
 };
@@ -216,27 +231,52 @@ app.on('ready', async () => {
     createWindow();
     await launchPythonServer({userResourcesPath, appResourcesPath});
   } catch (error) {
-
+    console.error(error);
   }
 });
 
 const killPythonServer = () => {
-  if (pythonProcess) {
-    pythonProcess.kill();
-    pythonProcess = null;
-  }
+  console.log('Python server:', pythonProcess);
+  return new Promise<void>(async(resolve, reject) => {
+    if (pythonProcess) {
+      try { 
+        pythonProcess.kill();
+        setTimeout(() => {
+          resolve(); // Force the issue after 5seconds
+        }, 5000);
+        // Make sure exit code was set so we can close gracefully
+        while (pythonProcess.exitCode == null)
+        {}
+        resolve(); 
+      }
+      catch(error)
+      {
+        console.error(error);
+        reject(error);
+      } 
+    }
+    else
+    {
+      resolve();
+    }
+  })
 };
 
-app.on('will-quit', () => {
-  killPythonServer();
-});
+app.on('before-quit', async () => {
+  await killPythonServer();
+  app.exit();
+})
+
+app.on('quit', () => {
+  app.exit();
+})
 
 // Quit when all windows are closed, except on macOS. There, it's common
 // for applications and their menu bar to stay active until the user quits
 // explicitly with Cmd + Q.
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') {
-    app.quit();
+    //app.quit();
   }
 });
 
