@@ -38,7 +38,13 @@ const createWindow = () => {
 
   // Load the UI from the Python server's URL
   //mainWindow.loadURL('http://localhost:8188/');
-  mainWindow.loadFile(path.join(__dirname, `../renderer/${MAIN_WINDOW_VITE_NAME}/index.html`));
+
+  // and load the index.html of the app.
+  if (MAIN_WINDOW_VITE_DEV_SERVER_URL) {
+    mainWindow.loadURL(MAIN_WINDOW_VITE_DEV_SERVER_URL);
+  } else {
+    mainWindow.loadFile(path.join(__dirname, `../renderer/${MAIN_WINDOW_VITE_NAME}/index.html`));
+  }
 
   // Set up the System Tray Icon for all platforms
   // Returns a tray so you can set a global var to access.
@@ -93,7 +99,7 @@ const isPortInUse = (host: string, port: number): Promise<boolean> => {
 };
 
 // Launch Python Server Variables
-const maxFailWait: number = 10 * 2000; // 10seconds
+const maxFailWait: number = 50 * 1000; // 50seconds
 let currentWaitTime: number = 0;
 let spawnServerTimeout: NodeJS.Timeout = null;
 
@@ -239,15 +245,9 @@ const killPythonServer = () => {
   console.log('Python server:', pythonProcess);
   return new Promise<void>(async(resolve, reject) => {
     if (pythonProcess) {
-      try {
-        pythonProcess.kill();
-        setTimeout(() => {
-          resolve(); // Force the issue after 5seconds
-        }, 5000);
-        // Make sure exit code was set so we can close gracefully
-        while (pythonProcess.exitCode == null)
-        {}
-        resolve();
+      try { 
+        const result:boolean = pythonProcess.kill(); //false if kill did not succeed sucessfully 
+        result ? resolve() : reject();
       }
       catch(error)
       {
@@ -263,7 +263,14 @@ const killPythonServer = () => {
 };
 
 app.on('before-quit', async () => {
-  await killPythonServer();
+  try {
+    await killPythonServer();
+  }
+  catch(error)
+  {
+    // Server did NOT exit properly
+    app.exit();
+  }
   app.exit();
 })
 
