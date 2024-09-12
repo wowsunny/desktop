@@ -33,6 +33,7 @@ jobs:
           DEBUG: electron-osx-sign*
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           SIGN_ID: ${{env.SIGN_ID}}
+          PUBLISH: true
           APPLE_ID: ${{ secrets.APPLE_ID }}
           APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
