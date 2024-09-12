@@ -20,5 +20,3 @@ runs:
         comfy --here standalone  --platform macos
         comfy standalone --rehydrate
         ls
-    - name: Sign Wheels
-      uses: ./.github/actions/build/macos/signwheel
