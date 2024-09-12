@@ -129,16 +129,14 @@ const launchPythonServer = async (args: {userResourcesPath: string, appResources
     const userDirectoryPath = path.join(app.getPath('userData'), 'user');
     const inputDirectoryPath = path.join(app.getPath('userData'), 'input');
     const outputDirectoryPath = path.join(app.getPath('userData'), 'output');
-    const comfyMainCmd = [scriptPath, 
+    const comfyMainCmd = [scriptPath,
         '--user-directory', userDirectoryPath,
         '--input-directory', inputDirectoryPath,
         '--output-directory', outputDirectoryPath,
         ...(process.env.COMFYUI_CPU_ONLY === "true" ? ["--cpu"] : [])];
 
-    const spawnPython = async () => {
-      pythonProcess = spawn(pythonInterpreterPath, comfyMainCmd, {
-        cwd: path.dirname(scriptPath)
-      });
+    const spawnPython = (cmd: string[], cwd: string) => {
+      const pythonProcess: ChildProcess = spawn(pythonInterpreterPath, cmd, {cwd});
 
       pythonProcess.stderr.on('data', (data) => {
         console.error(`stderr: ${data}`);
@@ -146,12 +144,14 @@ const launchPythonServer = async (args: {userResourcesPath: string, appResources
       pythonProcess.stdout.on('data', (data) => {
         console.log(`stdout: ${data}`);
       });
+
+      return pythonProcess
     }
 
     try {
       // check for existence of both interpreter and INSTALLER record to ensure a correctly installed python env
       await Promise.all([fsPromises.access(pythonInterpreterPath), fsPromises.access(pythonRecordPath)]);
-      spawnPython();
+      pythonProcess = spawnPython(comfyMainCmd, path.dirname(scriptPath));
     } catch {
       console.log('Running one-time python installation on first startup...');
       // clean up any possible existing non-functional python env
@@ -163,19 +163,20 @@ const launchPythonServer = async (args: {userResourcesPath: string, appResources
       await tar.extract({file: pythonTarPath, cwd: userResourcesPath, strict: true});
 
       const wheelsPath = path.join(pythonRootPath, 'wheels');
-      const rehydrateCmd = ['-m', 'uv', 'pip', 'install', '--no-index', '--no-deps', ...(await fsPromises.readdir(wheelsPath)).map(x => path.join(wheelsPath, x))];
+      // TODO: report space bug to uv upstream, then revert below mac fix
+      const rehydrateCmd = ['-m', ...(process.platform !== 'darwin' ? ['uv'] : []),  'pip', 'install', '--no-index', '--no-deps', ...(await fsPromises.readdir(wheelsPath)).map(x => path.join(wheelsPath, x))];
       const rehydrateProc = spawn(pythonInterpreterPath, rehydrateCmd, {cwd: wheelsPath});
 
       rehydrateProc.on("exit", code => {
-        // write an INSTALLER record on sucessful completion of rehydration
-        fsPromises.writeFile(pythonRecordPath, "ComfyUI");
-
         if (code===0) {
+          // write an INSTALLER record on sucessful completion of rehydration
+          fsPromises.writeFile(pythonRecordPath, "ComfyUI");
+
           // remove the now installed wheels
           fsPromises.rm(wheelsPath, {recursive: true});
           console.log(`Python successfully installed to ${pythonRootPath}`);
 
-          spawnPython();
+          pythonProcess = spawnPython(comfyMainCmd, path.dirname(scriptPath));
         } else {
           console.log(`Rehydration of python bundle exited with code ${code}`);
         }
@@ -252,8 +253,8 @@ const killPythonServer = () => {
   console.log('Python server:', pythonProcess);
   return new Promise<void>(async(resolve, reject) => {
     if (pythonProcess) {
-      try { 
-        const result:boolean = pythonProcess.kill(); //false if kill did not succeed sucessfully 
+      try {
+        const result:boolean = pythonProcess.kill(); //false if kill did not succeed sucessfully
         result ? resolve() : reject();
       }
       catch(error)
