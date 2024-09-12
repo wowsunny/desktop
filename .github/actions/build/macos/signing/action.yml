@@ -1,21 +1,23 @@
 name: Setup Apple Signing
 description: Setup everything to sign and notarize
-inputes:
+inputs:
   CERTIFICATE_OSX_APPLICATION:
+    description: 'The name of the certificate to use for signing'
     required: true
     type: string
   CERTIFICATE_PASSWORD:
+    description: 'The password for the certificate'
     required: true
     type: string
 runs:
   using: composite
   steps:
     - name: Add MacOS certs
-    shell: sh
-    run: cd scripts && chmod +x add-osx-cert.sh && ./add-osx-cert.sh
-    env:
-      CERTIFICATE_OSX_APPLICATION: ${{ inputs.CERTIFICATE_OSX_APPLICATION }}
-      CERTIFICATE_PASSWORD: ${{ inputs.CERTIFICATE_PASSWORD }}
+      shell: sh
+      run: cd scripts && chmod +x add-osx-cert.sh && ./add-osx-cert.sh
+      env:
+        CERTIFICATE_OSX_APPLICATION: ${{ inputs.CERTIFICATE_OSX_APPLICATION }}
+        CERTIFICATE_PASSWORD: ${{ inputs.CERTIFICATE_PASSWORD }}
     - name: Set ID
       shell: sh
       run: |
