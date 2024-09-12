@@ -1,5 +1,6 @@
 import { spawn, ChildProcess } from 'node:child_process';
-import * as fs from 'node:fs/promises';
+import * as fsPromises from 'node:fs/promises';
+import fs from 'fs'
 import net from 'node:net';
 import path from 'node:path';
 import { SetupTray } from './tray';
@@ -14,13 +15,11 @@ import('electron-squirrel-startup').then(ess => {
   }
 });
 import tar from 'tar';
+import { create } from 'node:domain';
 
 let pythonProcess: ChildProcess | null = null;
 const host = '127.0.0.1'; // Replace with the desired IP address
 const port = 8188; // Replace with the port number your server is running on
-const scriptPath = path.join(process.resourcesPath, 'ComfyUI', 'main.py');
-
-const packagedComfyUIExecutable = process.platform == 'win32' ? 'run_cpu.bat' : process.platform == 'darwin' ? 'ComfyUI' : 'ComfyUI';
 
 const createWindow = () => {
   // Create the browser window.
@@ -127,7 +126,14 @@ const launchPythonServer = async (args: {userResourcesPath: string, appResources
     const pythonInterpreterPath = process.platform==='win32' ? path.join(pythonRootPath, 'python.exe') : path.join(pythonRootPath, 'bin', 'python');
     const pythonRecordPath = path.join(pythonRootPath, "INSTALLER");
     const scriptPath = path.join(appResourcesPath, 'ComfyUI', 'main.py');
-    const comfyMainCmd = [scriptPath, ...(process.env.COMFYUI_CPU_ONLY === "true" ? ["--cpu"] : [])];
+    const userDirectoryPath = path.join(app.getPath('userData'), 'user');
+    const inputDirectoryPath = path.join(app.getPath('userData'), 'input');
+    const outputDirectoryPath = path.join(app.getPath('userData'), 'output');
+    const comfyMainCmd = [scriptPath, 
+        '--user-directory', userDirectoryPath,
+        '--input-directory', inputDirectoryPath,
+        '--output-directory', outputDirectoryPath,
+        ...(process.env.COMFYUI_CPU_ONLY === "true" ? ["--cpu"] : [])];
 
     const spawnPython = async () => {
       pythonProcess = spawn(pythonInterpreterPath, comfyMainCmd, {
@@ -144,29 +150,29 @@ const launchPythonServer = async (args: {userResourcesPath: string, appResources
 
     try {
       // check for existence of both interpreter and INSTALLER record to ensure a correctly installed python env
-      await Promise.all([fs.access(pythonInterpreterPath), fs.access(pythonRecordPath)]);
+      await Promise.all([fsPromises.access(pythonInterpreterPath), fsPromises.access(pythonRecordPath)]);
       spawnPython();
     } catch {
       console.log('Running one-time python installation on first startup...');
       // clean up any possible existing non-functional python env
       try {
-        await fs.rm(pythonRootPath, {recursive: true});
+        await fsPromises.rm(pythonRootPath, {recursive: true});
       } catch {null;}
 
       const pythonTarPath = path.join(appResourcesPath, 'python.tgz');
       await tar.extract({file: pythonTarPath, cwd: userResourcesPath, strict: true});
 
       const wheelsPath = path.join(pythonRootPath, 'wheels');
-      const rehydrateCmd = ['-m', 'uv', 'pip', 'install', '--no-index', '--no-deps', ...(await fs.readdir(wheelsPath)).map(x => path.join(wheelsPath, x))];
+      const rehydrateCmd = ['-m', 'uv', 'pip', 'install', '--no-index', '--no-deps', ...(await fsPromises.readdir(wheelsPath)).map(x => path.join(wheelsPath, x))];
       const rehydrateProc = spawn(pythonInterpreterPath, rehydrateCmd, {cwd: wheelsPath});
 
       rehydrateProc.on("exit", code => {
         // write an INSTALLER record on sucessful completion of rehydration
-        fs.writeFile(pythonRecordPath, "ComfyUI");
+        fsPromises.writeFile(pythonRecordPath, "ComfyUI");
 
         if (code===0) {
           // remove the now installed wheels
-          fs.rm(wheelsPath, {recursive: true});
+          fsPromises.rm(wheelsPath, {recursive: true});
           console.log(`Python successfully installed to ${pythonRootPath}`);
 
           spawnPython();
@@ -229,12 +235,13 @@ app.on('ready', async () => {
   }
 
   try {
-    await fs.mkdir(userResourcesPath);
+    await fsPromises.mkdir(userResourcesPath);
   } catch {
     // if user-specific resources dir already exists, that is fine
   }
   try {
     createWindow();
+    createComfyDirectories();
     await launchPythonServer({userResourcesPath, appResourcesPath});
   } catch (error) {
     console.error(error);
@@ -261,6 +268,61 @@ const killPythonServer = () => {
     }
   })
 };
+
+type DirectoryStructure = (string | [string, string[]])[];
+
+function createComfyDirectories(): void {
+  const userDataPath: string = app.getPath('userData');
+  const directories: DirectoryStructure = [
+    'custom_nodes',
+    'input',
+    'output',
+    'user',
+    ['models', [
+        'checkpoints',
+        'clip',
+        'clip_vision',
+        'configs',
+        'controlnet',
+        'diffusers',
+        'diffusion_models',
+        'embeddings',
+        'gligen',
+        'hypernetworks',
+        'loras',
+        'photomaker',
+        'style_models',
+        'unet',
+        'upscale_models',
+        'vae',
+        'vae_approx',
+    ]]
+  ];
+
+  function createDir(dirPath: string): void {
+    if (!fs.existsSync(dirPath)) {
+      fs.mkdirSync(dirPath, { recursive: true });
+      console.log(`Created directory: ${dirPath}`);
+    } else {
+      console.log(`Directory already exists: ${dirPath}`);
+    }
+  }
+
+  directories.forEach((dir: string | [string, string[]]) => {
+    if (Array.isArray(dir)) {
+      const [mainDir, subDirs] = dir;
+      const mainDirPath: string = path.join(userDataPath, mainDir);
+      createDir(mainDirPath);
+      subDirs.forEach((subDir: string) => {
+        const subDirPath: string = path.join(mainDirPath, subDir);
+        createDir(subDirPath);
+      });
+    } else {
+      const dirPath: string = path.join(userDataPath, dir);
+      createDir(dirPath);
+    }
+  });
+}
 
 app.on('before-quit', async () => {
   try {
