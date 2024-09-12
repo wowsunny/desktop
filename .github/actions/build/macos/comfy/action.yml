@@ -3,11 +3,6 @@ description: Download, install, and set up Comfy
 runs:
   using: composite
   steps:
-    - name: Use Node.js 20.x
-      uses: JP250552/setup-node@feature/corepack
-      with:
-        node-version: "22.x"
-        corepack: true
     - name: Install Python
       uses: actions/setup-python@v4
       with:
