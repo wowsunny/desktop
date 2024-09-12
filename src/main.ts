@@ -217,7 +217,7 @@ const launchPythonServer = async (args: {userResourcesPath: string, appResources
 app.on('ready', async () => {
   const {userResourcesPath, appResourcesPath} = app.isPackaged ? {
     // production: install python to per-user application data dir
-    userResourcesPath: app.getPath('appData'),
+    userResourcesPath: app.getPath('userData'),
     appResourcesPath: process.resourcesPath,
   } : {
     // development: install python to in-tree assets dir
