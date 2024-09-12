@@ -15,7 +15,6 @@ runs:
         cd assets
         comfy --skip-prompt --here install --fast-deps --m-series --manager-url https://github.com/Comfy-Org/manager-core
         cd ComfyUI
-        git checkout origin/rh-userdirectory 
         cd ../
         comfy --here standalone  --platform macos
         comfy standalone --rehydrate
