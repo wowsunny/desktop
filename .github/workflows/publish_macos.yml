@@ -15,7 +15,7 @@ jobs:
         with:
           node-version: "22.x"
           corepack: true  
-      - run: yarn install --verbose
+      - run: yarn install
       - name: Set Up signing
         uses: ./.github/actions/build/macos/signing
         with:
