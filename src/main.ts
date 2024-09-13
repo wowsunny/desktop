@@ -4,9 +4,9 @@ import fs from 'fs'
 import net from 'node:net';
 import path from 'node:path';
 import { SetupTray } from './tray';
-
+import { IPC_CHANNELS } from './constants';
 import dotenv from "dotenv";
-import { app, BrowserWindow, webContents } from 'electron';
+import { app, BrowserWindow, webContents, ipcMain, screen } from 'electron';
 // Handle creating/removing shortcuts on Windows when installing/uninstalling.
 import('electron-squirrel-startup').then(ess => {
   const {default: check} = ess;
@@ -14,35 +14,33 @@ import('electron-squirrel-startup').then(ess => {
     app.quit();
   }
 });
-import tar from 'tar';
-import { create } from 'node:domain';
 
 let pythonProcess: ChildProcess | null = null;
 const host = '127.0.0.1'; // Replace with the desired IP address
 const port = 8188; // Replace with the port number your server is running on
+let mainWindow: BrowserWindow | null;
 
-const createWindow = () => {
-  // Create the browser window.
-  const mainWindow = new BrowserWindow({
+
+const createWindow = async () => {
+    const primaryDisplay = screen.getPrimaryDisplay();
+    const { width, height } = primaryDisplay.workAreaSize;
+  mainWindow = new BrowserWindow({
     title: 'ComfyUI',
-    width: 800,
-    height: 600,
+    width: width,
+    height: height,
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       nodeIntegration: true, // Enable Node.js integration
-      contextIsolation: false,
+      contextIsolation: true,
     },
-
   });
-
-  // Load the UI from the Python server's URL
-  //mainWindow.loadURL('http://localhost:8188/');
-
+  
   // and load the index.html of the app.
   if (MAIN_WINDOW_VITE_DEV_SERVER_URL) {
-    mainWindow.loadURL(MAIN_WINDOW_VITE_DEV_SERVER_URL);
+    console.log('Loading Vite Dev Server');
+    await mainWindow.loadURL(MAIN_WINDOW_VITE_DEV_SERVER_URL);
   } else {
-    mainWindow.loadFile(path.join(__dirname, `../renderer/${MAIN_WINDOW_VITE_NAME}/index.html`));
+    await mainWindow.loadFile(path.join(__dirname, `../renderer/${MAIN_WINDOW_VITE_NAME}/index.html`));
   }
 
   // Set up the System Tray Icon for all platforms
@@ -99,8 +97,8 @@ const isPortInUse = (host: string, port: number): Promise<boolean> => {
 
 // Launch Python Server Variables
 const maxFailWait: number = 50 * 1000; // 50seconds
-let currentWaitTime: number = 0;
-let spawnServerTimeout: NodeJS.Timeout = null;
+let currentWaitTime = 0;
+const spawnServerTimeout: NodeJS.Timeout = null;
 
 const launchPythonServer = async (args: {userResourcesPath: string, appResourcesPath: string}) => {
   const {userResourcesPath, appResourcesPath} = args;
@@ -155,12 +153,12 @@ const launchPythonServer = async (args: {userResourcesPath: string, appResources
     } catch {
       console.log('Running one-time python installation on first startup...');
       // clean up any possible existing non-functional python env
-      try {
-        await fsPromises.rm(pythonRootPath, {recursive: true});
-      } catch {null;}
+    //   try {
+    //     await fsPromises.rm(pythonRootPath, {recursive: true});
+    //   } catch {null;}
 
-      const pythonTarPath = path.join(appResourcesPath, 'python.tgz');
-      await tar.extract({file: pythonTarPath, cwd: userResourcesPath, strict: true});
+    //   const pythonTarPath = path.join(appResourcesPath, 'python.tgz');
+    //   await tar.extract({file: pythonTarPath, cwd: userResourcesPath, strict: true});
 
       const wheelsPath = path.join(pythonRootPath, 'wheels');
       // TODO: report space bug to uv upstream, then revert below mac fix
@@ -194,12 +192,13 @@ const launchPythonServer = async (args: {userResourcesPath: string, appResources
       }
       const isReady = await isPortInUse(host, port);
       if (isReady) {
+        sendProgressUpdate(90, 'Finishing...');    
         console.log('Python server is ready');
         // Start the Heartbeat listener, send connected message to Renderer and resolve promise.
         serverHeartBeatReference = setInterval(serverHeartBeat, serverHeartBeatInterval);
         webContents.getAllWebContents()[0].send("python-server-status", "active");
         //For now just replace the source of the main window to the python server
-        webContents.getAllWebContents()[0].loadURL('http://localhost:8188/');
+        setTimeout( () => webContents.getAllWebContents()[0].loadURL('http://localhost:8188/'), 1000);
         clearTimeout(spawnServerTimeout);
         resolve();
       } else {
@@ -225,7 +224,6 @@ app.on('ready', async () => {
     userResourcesPath: path.join(app.getAppPath(), 'assets'),
     appResourcesPath: path.join(app.getAppPath(), 'assets'),
   }
-
   console.log(`userResourcesPath: ${userResourcesPath}`);
   console.log(`appResourcesPath: ${appResourcesPath}`);
 
@@ -241,17 +239,27 @@ app.on('ready', async () => {
     // if user-specific resources dir already exists, that is fine
   }
   try {
-    createWindow();
+    await createWindow();
+    sendProgressUpdate(20, 'Setting up comfy environment...');
     createComfyDirectories();
+    setTimeout(() => sendProgressUpdate(40, 'Starting Comfy Server...'), 1000);
     await launchPythonServer({userResourcesPath, appResourcesPath});
   } catch (error) {
     console.error(error);
+    sendProgressUpdate(0, 'Failed to start Comfy Server');
   }
 });
 
+function sendProgressUpdate(percentage: number, status: string) {
+    if (mainWindow) {
+        console.log('Sending progress update to renderer ' + status);
+        mainWindow.webContents.send(IPC_CHANNELS.LOADING_PROGRESS, { percentage, status });
+    }
+  }
+
 const killPythonServer = () => {
   console.log('Python server:', pythonProcess);
-  return new Promise<void>(async(resolve, reject) => {
+  return new Promise<void>((resolve, reject) => {
     if (pythonProcess) {
       try {
         const result:boolean = pythonProcess.kill(); //false if kill did not succeed sucessfully
@@ -272,6 +280,7 @@ const killPythonServer = () => {
 
 type DirectoryStructure = (string | [string, string[]])[];
 
+// Create directories needed by ComfyUI in the user's data directory.
 function createComfyDirectories(): void {
   const userDataPath: string = app.getPath('userData');
   const directories: DirectoryStructure = [
@@ -357,6 +366,3 @@ app.on('activate', () => {
     createWindow();
   }
 });
-
-// In this file you can include the rest of your app's specific main process
-// code. You can also put them in separate files and import them here.

@@ -27,5 +27,33 @@
  */
 
 import './index.css';
-
+import { IPC_CHANNELS, ELECTRON_BRIDGE_API } from './constants';
 console.log('👋 This message is being logged by "renderer.ts", included via Vite');
+
+interface ProgressUpdate {
+  percentage: number;
+  status: string;
+}
+
+const progressBar = document.getElementById('progress') as HTMLElement;
+const loadingText = document.getElementById('loading-text') as HTMLElement;
+
+function updateProgress({ percentage, status }: ProgressUpdate) {
+  console.log(`Updating progress: ${percentage}%, ${status}`);
+  progressBar.style.width = `${percentage}%`;
+  loadingText.textContent = status;
+
+  if (percentage === 100) {
+    loadingText.textContent = 'ComfyUI is ready!';
+  }
+}
+
+if (ELECTRON_BRIDGE_API in window) {
+  console.log(`${ELECTRON_BRIDGE_API} found, setting up listeners`);
+  (window as any).electronAPI.onProgressUpdate((update: ProgressUpdate) => {
+    console.log("Received loading progress", update);
+    updateProgress(update);
+  });
+} else {
+  console.error(`${ELECTRON_BRIDGE_API} not found in window object`);
+}
