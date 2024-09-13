@@ -1,0 +1,24 @@
+name: Lint and Format Check
+
+on:
+  pull_request:
+    branches: [main] # Adjust these branch names as needed
+
+jobs:
+  lint-and-format:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Use Node.js 20.x
+        uses: JP250552/setup-node@feature/corepack
+        with:
+          node-version: '20.x'
+          corepack: true
+
+      - name: Install Dependencies
+        run: yarn install
+
+      - name: Check Prettier Formatting
+        run: yarn run format
