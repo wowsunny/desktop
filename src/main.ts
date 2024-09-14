@@ -4,9 +4,9 @@ import fs from 'fs';
 import net from 'node:net';
 import path from 'node:path';
 import { SetupTray } from './tray';
-
+import { IPC_CHANNELS } from './constants';
 import dotenv from 'dotenv';
-import { app, BrowserWindow, webContents } from 'electron';
+import { app, BrowserWindow, webContents, screen } from 'electron';
 // Handle creating/removing shortcuts on Windows when installing/uninstalling.
 import('electron-squirrel-startup').then((ess) => {
   const { default: check } = ess;
