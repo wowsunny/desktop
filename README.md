@@ -7,6 +7,7 @@ This project uses `yarn` as its package manager. If you do not already have a `y
 ```bash
 # corepack is a set of utilities included with all recent distributions of node
 corepack enable
+yarn set version stable
 ```
 
 This will install a usable `yarn` binary. Then, in the root directory of this repo (ie adjacent to the top-level package.json file), run:
