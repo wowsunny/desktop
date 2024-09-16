@@ -8,6 +8,7 @@ import { IPC_CHANNELS } from './constants';
 import dotenv from 'dotenv';
 import { app, BrowserWindow, webContents, screen } from 'electron';
 import tar from 'tar';
+import { updateElectronApp, UpdateSourceType } from 'update-electron-app';
 
 // Handle creating/removing shortcuts on Windows when installing/uninstalling.
 import('electron-squirrel-startup').then((ess) => {
@@ -16,6 +17,17 @@ import('electron-squirrel-startup').then((ess) => {
     app.quit();
   }
 });
+
+if (app.isPackaged) {
+  updateElectronApp({
+    updateInterval: '1 hour',
+    updateSource: {
+      type: UpdateSourceType.ElectronPublicUpdateService,
+      host: 'https://updater.comfy.org',
+      repo: 'comfy-org/electron',
+    },
+  });
+}
 
 let pythonProcess: ChildProcess | null = null;
 const host = '127.0.0.1'; // Replace with the desired IP address
