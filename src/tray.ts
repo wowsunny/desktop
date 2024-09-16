@@ -32,7 +32,7 @@ export function SetupTray(mainView: BrowserWindow): Tray {
       },
     },
     {
-      label: 'Quit Comfy Now',
+      label: 'Quit Comfy',
       click() {
         app.quit();
       },
