@@ -6,10 +6,11 @@ import path from 'node:path';
 import { SetupTray } from './tray';
 import { IPC_CHANNELS } from './constants';
 import dotenv from 'dotenv';
-import { app, BrowserWindow, webContents, screen } from 'electron';
+import { app, BrowserWindow, dialog, webContents, screen, Menu } from 'electron';
 import tar from 'tar';
-import { updateElectronApp, UpdateSourceType } from 'update-electron-app';
+import log from 'electron-log/main';
 
+log.initialize();
 // Handle creating/removing shortcuts on Windows when installing/uninstalling.
 import('electron-squirrel-startup').then((ess) => {
   const { default: check } = ess;
@@ -18,16 +19,9 @@ import('electron-squirrel-startup').then((ess) => {
   }
 });
 
-if (app.isPackaged) {
-  updateElectronApp({
-    updateInterval: '1 hour',
-    updateSource: {
-      type: UpdateSourceType.ElectronPublicUpdateService,
-      host: 'https://updater.comfy.org',
-      repo: 'comfy-org/electron',
-    },
-  });
-}
+app.on('ready', () => {
+  log.info('App is Ready');
+});
 
 let pythonProcess: ChildProcess | null = null;
 const host = '127.0.0.1'; // Replace with the desired IP address
@@ -46,12 +40,11 @@ const createWindow = async () => {
       nodeIntegration: true, // Enable Node.js integration
       contextIsolation: true,
     },
-    autoHideMenuBar: true,
   });
 
   // and load the index.html of the app.
   if (MAIN_WINDOW_VITE_DEV_SERVER_URL) {
-    console.log('Loading Vite Dev Server');
+    log.info('Loading Vite Dev Server');
     await mainWindow.loadURL(MAIN_WINDOW_VITE_DEV_SERVER_URL);
   } else {
     mainWindow.loadFile(path.join(__dirname, `../renderer/${MAIN_WINDOW_VITE_NAME}/index.html`));
@@ -119,7 +112,7 @@ const launchPythonServer = async (args: { userResourcesPath: string; appResource
 
   const isServerRunning = await isPortInUse(host, port);
   if (isServerRunning) {
-    console.log('Python server is already running');
+    log.info('Python server is already running');
     // Server has been started outside the app, so attach to it.
     setTimeout(() => {
       // Not sure if needed but wait a few moments before sending the connect message up.
@@ -131,7 +124,7 @@ const launchPythonServer = async (args: { userResourcesPath: string; appResource
     return Promise.resolve();
   }
 
-  console.log('Launching Python server...');
+  log.info('Launching Python server...');
 
   return new Promise<void>(async (resolve, reject) => {
     const pythonRootPath = path.join(userResourcesPath, 'python');
@@ -165,7 +158,7 @@ const launchPythonServer = async (args: { userResourcesPath: string; appResource
           console.error(`stderr: ${data}`);
         });
         pythonProcess.stdout.on('data', (data) => {
-          console.log(`stdout: ${data}`);
+          log.info(`stdout: ${data}`);
         });
       }
 
@@ -177,7 +170,7 @@ const launchPythonServer = async (args: { userResourcesPath: string; appResource
       await Promise.all([fsPromises.access(pythonInterpreterPath), fsPromises.access(pythonRecordPath)]);
       pythonProcess = spawnPython(comfyMainCmd, path.dirname(scriptPath));
     } catch {
-      console.log('Running one-time python installation on first startup...');
+      log.info('Running one-time python installation on first startup...');
 
       try {
         // clean up any possible existing non-functional python env
@@ -231,11 +224,11 @@ const launchPythonServer = async (args: { userResourcesPath: string; appResource
             fsPromises.rm(wheelsPath, { recursive: true });
           }
 
-          console.log(`Python successfully installed to ${pythonRootPath}`);
+          log.info(`Python successfully installed to ${pythonRootPath}`);
 
           pythonProcess = spawnPython(comfyMainCmd, path.dirname(scriptPath));
         } else {
-          console.log(`Rehydration of python bundle exited with code ${code}`);
+          log.info(`Rehydration of python bundle exited with code ${code}`);
         }
       });
     }
@@ -252,7 +245,7 @@ const launchPythonServer = async (args: { userResourcesPath: string; appResource
       const isReady = await isPortInUse(host, port);
       if (isReady) {
         sendProgressUpdate(90, 'Finishing...');
-        console.log('Python server is ready');
+        log.info('Python server is ready');
         // Start the Heartbeat listener, send connected message to Renderer and resolve promise.
         serverHeartBeatReference = setInterval(serverHeartBeat, serverHeartBeatInterval);
         webContents.getAllWebContents()[0].send('python-server-status', 'active');
@@ -261,7 +254,7 @@ const launchPythonServer = async (args: { userResourcesPath: string; appResource
         clearTimeout(spawnServerTimeout);
         resolve();
       } else {
-        console.log('Ping failed. Retrying...');
+        log.info('Ping failed. Retrying...');
         setTimeout(checkServerReady, checkInterval);
       }
     };
@@ -285,8 +278,8 @@ app.on('ready', async () => {
         userResourcesPath: path.join(app.getAppPath(), 'assets'),
         appResourcesPath: path.join(app.getAppPath(), 'assets'),
       };
-  console.log(`userResourcesPath: ${userResourcesPath}`);
-  console.log(`appResourcesPath: ${appResourcesPath}`);
+  log.info(`userResourcesPath: ${userResourcesPath}`);
+  log.info(`appResourcesPath: ${appResourcesPath}`);
 
   try {
     dotenv.config({ path: path.join(appResourcesPath, 'ComfyUI', '.env') });
@@ -300,7 +293,9 @@ app.on('ready', async () => {
     // if user-specific resources dir already exists, that is fine
   }
   try {
+    sendProgressUpdate(10, 'Creating menu...');
     await createWindow();
+
     sendProgressUpdate(20, 'Setting up comfy environment...');
     createComfyDirectories();
     setTimeout(() => sendProgressUpdate(40, 'Starting Comfy Server...'), 1000);
@@ -313,7 +308,7 @@ app.on('ready', async () => {
 
 function sendProgressUpdate(percentage: number, status: string) {
   if (mainWindow) {
-    console.log('Sending progress update to renderer ' + status);
+    log.info('Sending progress update to renderer ' + status);
     mainWindow.webContents.send(IPC_CHANNELS.LOADING_PROGRESS, {
       percentage,
       status,
@@ -322,7 +317,7 @@ function sendProgressUpdate(percentage: number, status: string) {
 }
 
 const killPythonServer = () => {
-  console.log('Python server:', pythonProcess);
+  log.info('Python server:', pythonProcess);
   return new Promise<void>((resolve, reject) => {
     if (pythonProcess) {
       try {
@@ -375,9 +370,9 @@ function createComfyDirectories(): void {
   function createDir(dirPath: string): void {
     if (!fs.existsSync(dirPath)) {
       fs.mkdirSync(dirPath, { recursive: true });
-      console.log(`Created directory: ${dirPath}`);
+      log.info(`Created directory: ${dirPath}`);
     } else {
-      console.log(`Directory already exists: ${dirPath}`);
+      log.info(`Directory already exists: ${dirPath}`);
     }
   }
 
