@@ -50,6 +50,7 @@ const createWindow = async () => {
       nodeIntegration: true, // Enable Node.js integration
       contextIsolation: true,
     },
+    autoHideMenuBar: true,
   });
 
   // and load the index.html of the app.
