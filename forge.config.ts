@@ -79,8 +79,20 @@ const config: ForgeConfig = {
     },
   },
   makers: [
-    new MakerSquirrel({ frameworkVersion: 'net481' }, ['win32']),
-    new MakerZIP({}, ['darwin', 'win32']),
+    new MakerSquirrel(
+      (arch) => ({
+        noDelta: !process.env.PUBLISH,
+        remoteReleases: `https://comfyui-electron-releases.s3.us-west-2.amazonaws.com/win32/${arch}`,
+        frameworkVersion: 'net481',
+      }),
+      ['win32']
+    ),
+    new MakerZIP(
+      (arch) => ({
+        macUpdateManifestBaseUrl: `https://comfyui-electron-releases.s3.us-west-2.amazonaws.com/darwin/${arch}`,
+      }),
+      ['darwin', 'win32']
+    ),
     // the forge build produces a "ComfyUI" bin, but the rpm/deb makers expect a "comfyui-electron" bin (matching the "name" in package.json). We override this below
     new MakerRpm({
       options: {
@@ -137,27 +149,27 @@ const config: ForgeConfig = {
     //     bucket: 'electron-artifacts',
     //   },
     // },
-    // {
-    //   name: '@electron-forge/publisher-s3',
-    //   config: {
-    //     bucket: 'comfyui-electron-releases',
-    //     public: true,
-    //     keyResolver: (fileName: string, platform: string, arch: string) => {
-    //       return `${platform}/${arch}/${fileName}`;
-    //     },
-    //   },
-    // },
     {
-      name: '@electron-forge/publisher-github',
-      platforms: ['darwin', 'win32'],
+      name: '@electron-forge/publisher-s3',
       config: {
-        repository: {
-          owner: 'comfy-org',
-          name: 'electron',
+        bucket: 'comfyui-electron-releases',
+        public: true,
+        keyResolver: (fileName: string, platform: string, arch: string) => {
+          return `${platform}/${arch}/${fileName}`;
         },
-        prerelease: true,
       },
     },
+    // {
+    //   name: '@electron-forge/publisher-github',
+    //   platforms: ['darwin', 'win32'],
+    //   config: {
+    //     repository: {
+    //       owner: 'comfy-org',
+    //       name: 'electron',
+    //     },
+    //     prerelease: true,
+    //   },
+    // },
   ],
 };
 
