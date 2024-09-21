@@ -160,13 +160,15 @@ const launchPythonServer = async (args: { userResourcesPath: string; appResource
     ];
 
     const spawnPython = (cmd: string[], cwd: string, options = { stdx: true }) => {
+      log.info(`Spawning python process with command: ${cmd.join(' ')} in directory: ${cwd}`);
       const pythonProcess: ChildProcess = spawn(pythonInterpreterPath, cmd, {
         cwd,
       });
 
       if (options.stdx) {
+        log.info('Setting up python process stdout/stderr listeners');
         pythonProcess.stderr.on('data', (data) => {
-          console.error(`stderr: ${data}`);
+          log.error(`stderr: ${data}`);
         });
         pythonProcess.stdout.on('data', (data) => {
           log.info(`stdout: ${data}`);
@@ -209,6 +211,7 @@ const launchPythonServer = async (args: { userResourcesPath: string; appResource
 
       let rehydrateCmd;
       if (packWheels) {
+        sendProgressUpdate(50, 'Setting up Python environment...');
         // TODO: report space bug to uv upstream, then revert below mac fix
         rehydrateCmd = [
           '-m',
@@ -223,7 +226,7 @@ const launchPythonServer = async (args: { userResourcesPath: string; appResource
         const reqPath = path.join(pythonRootPath, 'requirements.compiled');
         rehydrateCmd = ['-m', 'uv', 'pip', 'install', '-r', reqPath];
       }
-      const rehydrateProc = spawnPython(rehydrateCmd, pythonRootPath, { stdx: false });
+      const rehydrateProc = spawnPython(rehydrateCmd, pythonRootPath, { stdx: true });
 
       rehydrateProc.on('exit', (code) => {
         if (code === 0) {
@@ -240,6 +243,8 @@ const launchPythonServer = async (args: { userResourcesPath: string; appResource
           pythonProcess = spawnPython(comfyMainCmd, path.dirname(scriptPath));
         } else {
           log.info(`Rehydration of python bundle exited with code ${code}`);
+          sendProgressUpdate(0, 'Python environment setup failed...');
+          reject('Python rehydration failed');
         }
       });
     }
@@ -309,7 +314,7 @@ app.on('ready', async () => {
 
     sendProgressUpdate(20, 'Setting up comfy environment...');
     createComfyDirectories();
-    setTimeout(() => sendProgressUpdate(40, 'Starting Comfy Server...'), 1000);
+    setTimeout(() => sendProgressUpdate(30, 'Starting Comfy Server...'), 1000);
     await launchPythonServer({ userResourcesPath, appResourcesPath });
   } catch (error) {
     console.error(error);
