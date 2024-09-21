@@ -224,7 +224,7 @@ const launchPythonServer = async (args: { userResourcesPath: string; appResource
         ];
       } else {
         const reqPath = path.join(pythonRootPath, 'requirements.compiled');
-        rehydrateCmd = ['-m', 'uv', 'pip', 'install', '-r', reqPath];
+        rehydrateCmd = ['-m', 'uv', 'pip', 'install', '-r', reqPath, '--index-strategy', 'unsafe-best-match'];
       }
       const rehydrateProc = spawnPython(rehydrateCmd, pythonRootPath, { stdx: true });
 
@@ -317,7 +317,7 @@ app.on('ready', async () => {
     setTimeout(() => sendProgressUpdate(30, 'Starting Comfy Server...'), 1000);
     await launchPythonServer({ userResourcesPath, appResourcesPath });
   } catch (error) {
-    console.error(error);
+    log.error(error);
     sendProgressUpdate(0, 'Failed to start Comfy Server');
   }
 });
@@ -340,7 +340,7 @@ const killPythonServer = () => {
         const result: boolean = pythonProcess.kill(); //false if kill did not succeed sucessfully
         result ? resolve() : reject();
       } catch (error) {
-        console.error(error);
+        log.error(error);
         reject(error);
       }
     } else {
