@@ -100,6 +100,7 @@ const isPortInUse = (host: string, port: number): Promise<boolean> => {
       if (err.code === 'EADDRINUSE') {
         resolve(true);
       } else {
+        log.error(err);
         resolve(false);
       }
     });
@@ -118,9 +119,7 @@ const maxFailWait: number = 50 * 1000; // 50seconds
 let currentWaitTime = 0;
 const spawnServerTimeout: NodeJS.Timeout = null;
 
-const launchPythonServer = async (args: { userResourcesPath: string; appResourcesPath: string }) => {
-  const { userResourcesPath, appResourcesPath } = args;
-
+const launchPythonServer = async (pythonInterpreterPath: string, appResourcesPath: string) => {
   const isServerRunning = await isPortInUse(host, port);
   if (isServerRunning) {
     log.info('Python server is already running');
@@ -138,12 +137,6 @@ const launchPythonServer = async (args: { userResourcesPath: string; appResource
   log.info('Launching Python server...');
 
   return new Promise<void>(async (resolve, reject) => {
-    const pythonRootPath = path.join(userResourcesPath, 'python');
-    const pythonInterpreterPath =
-      process.platform === 'win32'
-        ? path.join(pythonRootPath, 'python.exe')
-        : path.join(pythonRootPath, 'bin', 'python');
-    const pythonRecordPath = path.join(pythonRootPath, 'INSTALLER');
     const scriptPath = path.join(appResourcesPath, 'ComfyUI', 'main.py');
     const userDirectoryPath = path.join(app.getPath('userData'), 'user');
     const inputDirectoryPath = path.join(app.getPath('userData'), 'input');
@@ -159,106 +152,7 @@ const launchPythonServer = async (args: { userResourcesPath: string; appResource
       ...(process.env.COMFYUI_CPU_ONLY === 'true' ? ['--cpu'] : []),
     ];
 
-    const spawnPython = (cmd: string[], cwd: string, options = { stdx: true }) => {
-      log.info(`Spawning python process with command: ${cmd.join(' ')} in directory: ${cwd}`);
-      const pythonProcess: ChildProcess = spawn(pythonInterpreterPath, cmd, {
-        cwd,
-      });
-
-      if (options.stdx) {
-        log.info('Setting up python process stdout/stderr listeners');
-        pythonProcess.stderr.on('data', (data) => {
-          log.error(`stderr: ${data}`);
-        });
-        pythonProcess.stdout.on('data', (data) => {
-          log.info(`stdout: ${data}`);
-        });
-      }
-
-      return pythonProcess;
-    };
-
-    try {
-      // check for existence of both interpreter and INSTALLER record to ensure a correctly installed python env
-      await Promise.all([fsPromises.access(pythonInterpreterPath), fsPromises.access(pythonRecordPath)]);
-      pythonProcess = spawnPython(comfyMainCmd, path.dirname(scriptPath));
-    } catch {
-      log.info('Running one-time python installation on first startup...');
-
-      try {
-        // clean up any possible existing non-functional python env
-        await fsPromises.rm(pythonRootPath, { recursive: true });
-      } catch {
-        null;
-      }
-
-      const pythonTarPath = path.join(appResourcesPath, 'python.tgz');
-      await tar.extract({
-        file: pythonTarPath,
-        cwd: userResourcesPath,
-        strict: true,
-      });
-
-      // install python pkgs from wheels if packed in bundle, otherwise just use requirements.compiled
-      const wheelsPath = path.join(pythonRootPath, 'wheels');
-      let packWheels;
-      try {
-        await fsPromises.access(wheelsPath);
-        packWheels = true;
-      } catch {
-        packWheels = false;
-      }
-
-      let rehydrateCmd;
-      if (packWheels) {
-        sendProgressUpdate(50, 'Setting up Python environment...');
-        // TODO: report space bug to uv upstream, then revert below mac fix
-        rehydrateCmd = [
-          '-m',
-          ...(process.platform !== 'darwin' ? ['uv'] : []),
-          'pip',
-          'install',
-          '--no-index',
-          '--no-deps',
-          '--verbose',
-          ...(await fsPromises.readdir(wheelsPath)).map((x) => path.join(wheelsPath, x)),
-        ];
-      } else {
-        const reqPath = path.join(pythonRootPath, 'requirements.compiled');
-        rehydrateCmd = [
-          '-m',
-          'uv',
-          'pip',
-          'install',
-          '-r',
-          reqPath,
-          '--index-strategy',
-          'unsafe-best-match',
-          '--verbose',
-        ];
-      }
-      const rehydrateProc = spawnPython(rehydrateCmd, pythonRootPath, { stdx: true });
-
-      rehydrateProc.on('exit', (code) => {
-        if (code === 0) {
-          // write an INSTALLER record on sucessful completion of rehydration
-          fsPromises.writeFile(pythonRecordPath, 'ComfyUI');
-
-          if (packWheels) {
-            // remove the now installed wheels
-            fsPromises.rm(wheelsPath, { recursive: true });
-          }
-
-          log.info(`Python successfully installed to ${pythonRootPath}`);
-
-          pythonProcess = spawnPython(comfyMainCmd, path.dirname(scriptPath));
-        } else {
-          log.info(`Rehydration of python bundle exited with code ${code}`);
-          sendProgressUpdate(0, 'Python environment setup failed...');
-          reject('Python rehydration failed');
-        }
-      });
-    }
+    spawnPython(pythonInterpreterPath, comfyMainCmd, path.dirname(scriptPath));
 
     const checkInterval = 1000; // Check every 1 second
 
@@ -314,19 +208,23 @@ app.on('ready', async () => {
     // if no .env file, skip it
   }
 
-  try {
-    await fsPromises.mkdir(userResourcesPath);
-  } catch {
-    // if user-specific resources dir already exists, that is fine
-  }
+  createDirIfNotExists(userResourcesPath);
+
   try {
     sendProgressUpdate(10, 'Creating menu...');
     await createWindow();
 
     sendProgressUpdate(20, 'Setting up comfy environment...');
     createComfyDirectories();
-    setTimeout(() => sendProgressUpdate(30, 'Starting Comfy Server...'), 1000);
-    await launchPythonServer({ userResourcesPath, appResourcesPath });
+    const pythonRootPath = path.join(userResourcesPath, 'python');
+    const pythonInterpreterPath =
+      process.platform === 'win32'
+        ? path.join(pythonRootPath, 'python.exe')
+        : path.join(pythonRootPath, 'bin', 'python');
+    setTimeout(() => sendProgressUpdate(40, 'Setting up Python Environment...'), 500);
+    await setupPythonEnvironment(pythonRootPath, pythonInterpreterPath, appResourcesPath, userResourcesPath);
+    setTimeout(() => sendProgressUpdate(50, 'Starting Comfy Server...'), 500);
+    await launchPythonServer(pythonInterpreterPath, appResourcesPath);
   } catch (error) {
     log.error(error);
     sendProgressUpdate(0, 'Failed to start Comfy Server');
@@ -359,6 +257,192 @@ const killPythonServer = () => {
     }
   });
 };
+
+app.on('before-quit', async () => {
+  try {
+    await killPythonServer();
+  } catch (error) {
+    // Server did NOT exit properly
+    app.exit();
+  }
+  app.exit();
+});
+
+app.on('quit', () => {
+  app.exit();
+});
+
+// Quit when all windows are closed, except on macOS. There, it's common
+// for applications and their menu bar to stay active until the user quits
+// explicitly with Cmd + Q.
+app.on('window-all-closed', () => {
+  if (process.platform !== 'darwin') {
+    //app.quit();
+  }
+});
+
+app.on('activate', () => {
+  // On OS X it's common to re-create a window in the app when the
+  // dock icon is clicked and there are no other windows open.
+  if (BrowserWindow.getAllWindows().length === 0) {
+    createWindow();
+  }
+});
+
+app.on('before-quit', async () => {
+  try {
+    await killPythonServer();
+  } catch (error) {
+    // Server did NOT exit properly
+    log.error('Python server did not exit properly');
+    log.error(error);
+    app.exit();
+  }
+});
+
+const spawnPython = (pythonInterpreterPath: string, cmd: string[], cwd: string, options = { stdx: true }) => {
+  log.info(`Spawning python process with command: ${cmd.join(' ')} in directory: ${cwd}`);
+  const pythonProcess: ChildProcess = spawn(pythonInterpreterPath, cmd, {
+    cwd,
+  });
+
+  if (options.stdx) {
+    log.info('Setting up python process stdout/stderr listeners');
+    pythonProcess.stderr.on('data', (data) => {
+      log.error(`stderr: ${data}`);
+    });
+    pythonProcess.stdout.on('data', (data) => {
+      log.info(`stdout: ${data}`);
+    });
+  }
+
+  return pythonProcess;
+};
+
+const spawnPythonAsync = (
+  pythonInterpreterPath: string,
+  cmd: string[],
+  cwd: string,
+  options = { stdx: true }
+): Promise<{ exitCode: number | null; stdout: string; stderr: string }> => {
+  return new Promise((resolve, reject) => {
+    log.info(`Spawning python process with command: ${cmd.join(' ')} in directory: ${cwd}`);
+    const pythonProcess: ChildProcess = spawn(pythonInterpreterPath, cmd, { cwd });
+
+    let stdout = '';
+    let stderr = '';
+
+    if (options.stdx) {
+      log.info('Setting up python process stdout/stderr listeners');
+      pythonProcess.stderr.on('data', (data) => {
+        stderr += data.toString();
+        log.error(`stderr: ${data}`);
+      });
+      pythonProcess.stdout.on('data', (data) => {
+        stdout += data.toString();
+        log.info(`stdout: ${data}`);
+      });
+    }
+
+    pythonProcess.on('close', (code) => {
+      log.info(`Python process exited with code ${code}`);
+      resolve({ exitCode: code, stdout, stderr });
+    });
+
+    pythonProcess.on('error', (err) => {
+      log.error(`Failed to start Python process: ${err}`);
+      reject(err);
+    });
+
+    process.on('exit', () => {
+      log.warn('Parent process exiting, killing Python process');
+      pythonProcess.kill();
+    });
+  });
+};
+
+async function setupPythonEnvironment(
+  pythonRootPath: string,
+  pythonInterpreterPath: string,
+  appResourcesPath: string,
+  userResourcesPath: string
+) {
+  const pythonRecordPath = path.join(pythonRootPath, 'INSTALLER');
+  try {
+    // check for existence of both interpreter and INSTALLER record to ensure a correctly installed python env
+    await Promise.all([fsPromises.access(pythonInterpreterPath), fsPromises.access(pythonRecordPath)]);
+  } catch {
+    log.info('Running one-time python installation on first startup...');
+
+    try {
+      // clean up any possible existing non-functional python env
+      await fsPromises.rm(pythonRootPath, { recursive: true });
+    } catch {
+      null;
+    }
+
+    const pythonTarPath = path.join(appResourcesPath, 'python.tgz');
+    await tar.extract({
+      file: pythonTarPath,
+      cwd: userResourcesPath,
+      strict: true,
+    });
+
+    // install python pkgs from wheels if packed in bundle, otherwise just use requirements.compiled
+    const wheelsPath = path.join(pythonRootPath, 'wheels');
+    let packWheels;
+    try {
+      await fsPromises.access(wheelsPath);
+      packWheels = true;
+    } catch {
+      packWheels = false;
+    }
+
+    let rehydrateCmd;
+    if (packWheels) {
+      // TODO: report space bug to uv upstream, then revert below mac fix
+      rehydrateCmd = [
+        '-m',
+        ...(process.platform !== 'darwin' ? ['uv'] : []),
+        'pip',
+        'install',
+        '--no-index',
+        '--no-deps',
+        '--verbose',
+        ...(await fsPromises.readdir(wheelsPath)).map((x) => path.join(wheelsPath, x)),
+      ];
+    } else {
+      const reqPath = path.join(pythonRootPath, 'requirements.compiled');
+      rehydrateCmd = [
+        '-m',
+        'uv',
+        'pip',
+        'install',
+        '-r',
+        reqPath,
+        '--index-strategy',
+        'unsafe-best-match',
+        '--verbose',
+      ];
+    }
+    const { exitCode } = await spawnPythonAsync(pythonInterpreterPath, rehydrateCmd, pythonRootPath, { stdx: true });
+
+    if (exitCode === 0) {
+      // write an INSTALLER record on sucessful completion of rehydration
+      fsPromises.writeFile(pythonRecordPath, 'ComfyUI');
+
+      if (packWheels) {
+        // remove the now installed wheels
+        fsPromises.rm(wheelsPath, { recursive: true });
+      }
+
+      log.info(`Python successfully installed to ${pythonRootPath}`);
+    } else {
+      log.info(`Rehydration of python bundle exited with code ${exitCode}`);
+      throw new Error('Python rehydration failed');
+    }
+  }
+}
 
 type DirectoryStructure = (string | [string, string[]])[];
 
@@ -394,60 +478,31 @@ function createComfyDirectories(): void {
     ],
   ];
 
-  function createDir(dirPath: string): void {
-    if (!fs.existsSync(dirPath)) {
-      fs.mkdirSync(dirPath, { recursive: true });
-      log.info(`Created directory: ${dirPath}`);
-    } else {
-      log.info(`Directory already exists: ${dirPath}`);
-    }
-  }
-
   directories.forEach((dir: string | [string, string[]]) => {
     if (Array.isArray(dir)) {
       const [mainDir, subDirs] = dir;
       const mainDirPath: string = path.join(userDataPath, mainDir);
-      createDir(mainDirPath);
+      createDirIfNotExists(mainDirPath);
       subDirs.forEach((subDir: string) => {
         const subDirPath: string = path.join(mainDirPath, subDir);
-        createDir(subDirPath);
+        createDirIfNotExists(subDirPath);
       });
     } else {
       const dirPath: string = path.join(userDataPath, dir);
-      createDir(dirPath);
+      createDirIfNotExists(dirPath);
     }
   });
 }
 
-app.on('before-quit', async () => {
-  try {
-    await killPythonServer();
-  } catch (error) {
-    // Server did NOT exit properly
-    log.error('Python server did not exit properly');
-    log.error(error);
-    app.exit();
+/**
+ * Create a directory if not exists
+ * @param dirPath
+ */
+function createDirIfNotExists(dirPath: string): void {
+  if (!fs.existsSync(dirPath)) {
+    fs.mkdirSync(dirPath, { recursive: true });
+    log.info(`Created directory: ${dirPath}`);
+  } else {
+    log.info(`Directory already exists: ${dirPath}`);
   }
-  app.exit();
-});
-
-app.on('quit', () => {
-  app.exit();
-});
-
-// Quit when all windows are closed, except on macOS. There, it's common
-// for applications and their menu bar to stay active until the user quits
-// explicitly with Cmd + Q.
-app.on('window-all-closed', () => {
-  if (process.platform !== 'darwin') {
-    //app.quit();
-  }
-});
-
-app.on('activate', () => {
-  // On OS X it's common to re-create a window in the app when the
-  // dock icon is clicked and there are no other windows open.
-  if (BrowserWindow.getAllWindows().length === 0) {
-    createWindow();
-  }
-});
+}
