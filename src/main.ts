@@ -130,7 +130,7 @@ const maxFailWait: number = 50 * 1000; // 50seconds
 let currentWaitTime = 0;
 const spawnServerTimeout: NodeJS.Timeout = null;
 
-const launchPythonServer = async (pythonInterpreterPath: string, appResourcesPath: string) => {
+const launchPythonServer = async (pythonInterpreterPath: string, appResourcesPath: string, userResourcesPath: string) => {
   const isServerRunning = await isPortInUse(host, port);
   if (isServerRunning) {
     log.info('Python server is already running');
@@ -149,9 +149,9 @@ const launchPythonServer = async (pythonInterpreterPath: string, appResourcesPat
 
   return new Promise<void>(async (resolve, reject) => {
     const scriptPath = path.join(appResourcesPath, 'ComfyUI', 'main.py');
-    const userDirectoryPath = path.join(app.getPath('userData'), 'user');
-    const inputDirectoryPath = path.join(app.getPath('userData'), 'input');
-    const outputDirectoryPath = path.join(app.getPath('userData'), 'output');
+    const userDirectoryPath = path.join(userResourcesPath, 'user');
+    const inputDirectoryPath = path.join(userResourcesPath, 'input');
+    const outputDirectoryPath = path.join(userResourcesPath, 'output');
     const comfyMainCmd = [
       scriptPath,
       '--user-directory',
@@ -198,11 +198,14 @@ const launchPythonServer = async (pythonInterpreterPath: string, appResourcesPat
 // This method will be called when Electron has finished
 // initialization and is ready to create browser windows.
 // Some APIs can only be used after this event occurs.
+const windowsLocalAppData = path.join(app.getPath('home'), 'ComfyUI')
+log.info('Windows Local App Data directory: ', windowsLocalAppData);
+
 app.on('ready', async () => {
   const { userResourcesPath, appResourcesPath } = app.isPackaged
     ? {
         // production: install python to per-user application data dir
-        userResourcesPath: app.getPath('userData'),
+        userResourcesPath: process.platform === 'win32' ? windowsLocalAppData: app.getPath('userData'),
         appResourcesPath: process.resourcesPath,
       }
     : {
@@ -226,16 +229,16 @@ app.on('ready', async () => {
     await createWindow();
 
     sendProgressUpdate(20, 'Setting up comfy environment...');
-    createComfyDirectories();
+    createComfyDirectories(userResourcesPath);
     const pythonRootPath = path.join(userResourcesPath, 'python');
     const pythonInterpreterPath =
       process.platform === 'win32'
         ? path.join(pythonRootPath, 'python.exe')
         : path.join(pythonRootPath, 'bin', 'python');
     sendProgressUpdate(40, 'Setting up Python Environment...');
-    await setupPythonEnvironment(pythonRootPath, pythonInterpreterPath, appResourcesPath, userResourcesPath);
+    await setupPythonEnvironment(pythonInterpreterPath, appResourcesPath, userResourcesPath);
     sendProgressUpdate(50, 'Starting Comfy Server...');
-    await launchPythonServer(pythonInterpreterPath, appResourcesPath);
+    await launchPythonServer(pythonInterpreterPath, appResourcesPath, userResourcesPath);
   } catch (error) {
     log.error(error);
     sendProgressUpdate(0, error.message);
@@ -385,11 +388,11 @@ const spawnPythonAsync = (
 };
 
 async function setupPythonEnvironment(
-  pythonRootPath: string,
   pythonInterpreterPath: string,
   appResourcesPath: string,
   userResourcesPath: string
 ) {
+  const pythonRootPath = path.join(userResourcesPath, 'python');
   const pythonRecordPath = path.join(pythonRootPath, 'INSTALLER');
   try {
     // check for existence of both interpreter and INSTALLER record to ensure a correctly installed python env
@@ -470,8 +473,7 @@ async function setupPythonEnvironment(
 type DirectoryStructure = (string | [string, string[]])[];
 
 // Create directories needed by ComfyUI in the user's data directory.
-function createComfyDirectories(): void {
-  const userDataPath: string = app.getPath('userData');
+function createComfyDirectories(localComfyDirectory: string): void {
   const directories: DirectoryStructure = [
     'custom_nodes',
     'input',
@@ -500,18 +502,19 @@ function createComfyDirectories(): void {
       ],
     ],
   ];
+  createDirIfNotExists(localComfyDirectory)
 
   directories.forEach((dir: string | [string, string[]]) => {
     if (Array.isArray(dir)) {
       const [mainDir, subDirs] = dir;
-      const mainDirPath: string = path.join(userDataPath, mainDir);
+      const mainDirPath: string = path.join(localComfyDirectory, mainDir);
       createDirIfNotExists(mainDirPath);
       subDirs.forEach((subDir: string) => {
         const subDirPath: string = path.join(mainDirPath, subDir);
         createDirIfNotExists(subDirPath);
       });
     } else {
-      const dirPath: string = path.join(userDataPath, dir);
+      const dirPath: string = path.join(localComfyDirectory, dir);
       createDirIfNotExists(dirPath);
     }
   });
