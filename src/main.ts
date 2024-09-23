@@ -413,6 +413,8 @@ app.on('before-quit', async () => {
     await killPythonServer();
   } catch (error) {
     // Server did NOT exit properly
+    log.error('Python server did not exit properly');
+    log.error(error);
     app.exit();
   }
   app.exit();
