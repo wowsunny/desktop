@@ -172,7 +172,10 @@ const launchPythonServer = async (
       ...(process.env.COMFYUI_CPU_ONLY === 'true' ? ['--cpu'] : []),
     ];
 
-    pythonProcess = spawnPython(pythonInterpreterPath, comfyMainCmd, path.dirname(scriptPath));
+    pythonProcess = spawnPython(pythonInterpreterPath, comfyMainCmd, path.dirname(scriptPath), {
+      logFile: 'comfyui',
+      stdx: true,
+    });
 
     const checkInterval = 1000; // Check every 1 second
 
@@ -336,7 +339,12 @@ app.on('activate', () => {
   }
 });
 
-const spawnPython = (pythonInterpreterPath: string, cmd: string[], cwd: string, options = { stdx: true }) => {
+const spawnPython = (
+  pythonInterpreterPath: string,
+  cmd: string[],
+  cwd: string,
+  options = { stdx: true, logFile: '' }
+) => {
   log.info(`Spawning python process with command: ${cmd.join(' ')} in directory: ${cwd}`);
   const pythonProcess: ChildProcess = spawn(pythonInterpreterPath, cmd, {
     cwd,
@@ -344,11 +352,24 @@ const spawnPython = (pythonInterpreterPath: string, cmd: string[], cwd: string, 
 
   if (options.stdx) {
     log.info('Setting up python process stdout/stderr listeners');
+
+    let pythonLog = log;
+    if (options.logFile) {
+      log.info('Creating separate python log file: ', options.logFile);
+      pythonLog = log.create({ logId: options.logFile });
+      pythonLog.transports.file.fileName = `${options.logFile}.log`;
+      pythonLog.transports.file.resolvePathFn = (variables) => {
+        return path.join(variables.electronDefaultDir, variables.fileName);
+      };
+    }
+
     pythonProcess.stderr.on('data', (data) => {
-      log.error(`stderr: ${data}`);
+      const message = data.toString().trim();
+      pythonLog.error(`stderr: ${message}`);
     });
     pythonProcess.stdout.on('data', (data) => {
-      log.info(`stdout: ${data}`);
+      const message = data.toString().trim();
+      pythonLog.info(`stdout: ${message}`);
     });
   }
 
