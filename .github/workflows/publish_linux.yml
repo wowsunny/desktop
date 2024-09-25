@@ -3,6 +3,7 @@ name: Release Linux app
 
 on:
   workflow_dispatch:
+  workflow_call:
 
 jobs:
   build-linux:
