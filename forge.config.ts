@@ -87,6 +87,8 @@ const config: ForgeConfig = {
         }),
         remoteReleases: `https://comfyui-electron-releases.s3.us-west-2.amazonaws.com/win32/${arch}/`,
         frameworkVersion: 'net481',
+        setupIcon: './assets/UI/Comfy_Logo.ico',
+        iconUrl: 'https://storage.googleapis.com/comfy-assets/favicon.ico',
       }),
       ['win32']
     ),
