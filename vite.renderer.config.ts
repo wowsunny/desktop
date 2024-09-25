@@ -16,6 +16,7 @@ export default defineConfig((env) => {
     build: {
       outDir: `.vite/renderer/${name}`,
     },
+    define: {},
     plugins: [pluginExposeRenderer(name)],
     resolve: {
       alias: [{ find: 'src', replacement: resolve(__dirname, './src/') }],

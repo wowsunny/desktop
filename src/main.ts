@@ -4,11 +4,12 @@ import fs from 'fs';
 import axios from 'axios';
 import path from 'node:path';
 import { SetupTray } from './tray';
-import { IPC_CHANNELS } from './constants';
+import { IPC_CHANNELS, SENTRY_URL_ENDPOINT } from './constants';
 import dotenv from 'dotenv';
-import { app, BrowserWindow, webContents, screen, ipcMain } from 'electron';
+import { app, BrowserWindow, webContents, screen, ipcMain, crashReporter } from 'electron';
 import tar from 'tar';
 import log from 'electron-log/main';
+import * as Sentry from '@sentry/electron/main';
 
 import { updateElectronApp, UpdateSourceType } from 'update-electron-app';
 
@@ -29,6 +30,32 @@ import('electron-squirrel-startup').then((ess) => {
     app.quit();
   }
 });
+
+app.isPackaged &&
+  Sentry.init({
+    dsn: SENTRY_URL_ENDPOINT,
+    /* //WIP gather and send log from main 
+    beforeSend(event, hint) {
+      hint.attachments = [
+        {
+          filename: 'main.log',
+          attachmentType: 'event.attachment',
+          data: readLogMain(),
+        },
+      ];
+      return event;
+    }, */
+    integrations: [
+      Sentry.childProcessIntegration({
+        breadcrumbs: ['abnormal-exit', 'killed', 'crashed', 'launch-failed', 'oom', 'integrity-failure'],
+        events: ['abnormal-exit', 'killed', 'crashed', 'launch-failed', 'oom', 'integrity-failure'],
+      }),
+    ],
+  });
+
+function readLogMain() {
+  return log.transports.file.readAllLogs()[0].lines.slice(-100).join('\n');
+}
 
 app.on('ready', () => {
   log.info('App is Ready');
@@ -133,9 +160,9 @@ const isComfyServerReady = async (host: string, port: number): Promise<boolean> 
 };
 
 // Launch Python Server Variables
-const maxFailWait: number = 50 * 1000; // 50seconds
+const maxFailWait: number = 60 * 1000; // 60seconds
 let currentWaitTime = 0;
-const spawnServerTimeout: NodeJS.Timeout = null;
+let spawnServerTimeout: NodeJS.Timeout = null;
 
 const launchPythonServer = async (
   pythonInterpreterPath: string,
@@ -201,7 +228,7 @@ const launchPythonServer = async (
         resolve();
       } else {
         log.info('Ping failed. Retrying...');
-        setTimeout(checkServerReady, checkInterval);
+        spawnServerTimeout = setTimeout(checkServerReady, checkInterval);
       }
     };
 
