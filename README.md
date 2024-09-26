@@ -2,16 +2,18 @@
 
 # Overview
 
-This electron app distributes [ComfyUI](https://github.com/comfyanonymous/ComfyUI) and comes bundled with a few things:
+This electron app is the simplest way to use [ComfyUI](https://github.com/comfyanonymous/ComfyUI) comes bundled with a few things:
 
-- standalone python runtime
+- [standalone](https://github.com/indygreg/python-build-standalone) python runtime
 - comfyui manager [core](https://github.com/Comfy-Org/manager-core)
 - [comfy-cli](https://github.com/Comfy-Org/comfy-cli)
-- uv
+- [uv](https://github.com/astral-sh/uv)
 
 On startup, it will install all the necessary python dependencies and start the server.
 
-We publish updates via electron in line with the stable releases of ComfyUI.
+We publish updates in line with the stable releases of ComfyUI.
+
+The app uses our electron update server hosted at https://updater.comfy.org.
 
 ## ComfyUI Files
 
