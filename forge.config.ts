@@ -94,7 +94,7 @@ const config: ForgeConfig = {
     ),
     new MakerZIP(
       (arch) => ({
-        macUpdateManifestBaseUrl: `https://comfyui-electron-releases.s3.us-west-2.amazonaws.com/darwin/${arch}/`,
+        macUpdateManifestBaseUrl: `https://comfyui-electron-releases.s3.us-west-2.amazonaws.com/darwin/${arch}`,
       }),
       ['darwin', 'win32']
     ),
