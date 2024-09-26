@@ -6,7 +6,18 @@ import path from 'node:path';
 import { SetupTray } from './tray';
 import { IPC_CHANNELS, SENTRY_URL_ENDPOINT } from './constants';
 import dotenv from 'dotenv';
-import { app, BrowserWindow, webContents, screen, ipcMain, crashReporter } from 'electron';
+import {
+  app,
+  BrowserWindow,
+  webContents,
+  screen,
+  ipcMain,
+  crashReporter,
+  Menu,
+  shell,
+  MenuItemConstructorOptions,
+  MenuItem,
+} from 'electron';
 import tar from 'tar';
 import log from 'electron-log/main';
 import * as Sentry from '@sentry/electron/main';
@@ -67,7 +78,68 @@ const port = 8188; // Replace with the port number your server is running on
 let mainWindow: BrowserWindow | null;
 const messageQueue: Array<any> = []; // Stores mesaages before renderer is ready.
 
-export const createWindow = async (): Promise<BrowserWindow> => {
+function buildMenu(userResourcesPath: string): Menu {
+  const isMac = process.platform === 'darwin';
+
+  const goMenu = Menu.buildFromTemplate([
+    {
+      label: 'Models',
+      click: () => shell.openPath(path.join(userResourcesPath, 'models')),
+    },
+    {
+      label: 'Outputs',
+      click: () => shell.openPath(path.join(userResourcesPath, 'output')),
+    },
+    {
+      label: 'Inputs',
+      click: () => shell.openPath(path.join(userResourcesPath, 'input')),
+    },
+    {
+      label: 'Custom Nodes',
+      click: () => shell.openPath(path.join(userResourcesPath, 'custom_nodes')),
+    },
+    {
+      label: 'Logs',
+      click: () => shell.openPath(app.getPath('logs')),
+    },
+  ]);
+
+  const menu = new Menu();
+
+  if (isMac) {
+    menu.append(
+      new MenuItem({
+        label: app.name,
+        submenu: [
+          { role: 'about' },
+          { type: 'separator' },
+          { role: 'services' },
+          { type: 'separator' },
+          { role: 'hide' },
+          { role: 'hideOthers' },
+          { role: 'unhide' },
+          { type: 'separator' },
+          { role: 'quit' },
+        ],
+      })
+    );
+  }
+
+  menu.append(new MenuItem({ label: 'Go', submenu: goMenu }));
+
+  if (!isMac) {
+    menu.append(
+      new MenuItem({
+        label: 'File',
+        submenu: [{ role: 'quit' }],
+      })
+    );
+  }
+
+  return menu;
+}
+
+export const createWindow = async (userResourcesPath: string): Promise<BrowserWindow> => {
   const primaryDisplay = screen.getPrimaryDisplay();
   const { width, height } = primaryDisplay.workAreaSize;
   mainWindow = new BrowserWindow({
@@ -116,6 +188,10 @@ export const createWindow = async (): Promise<BrowserWindow> => {
   });
   // Open the DevTools.
   // mainWindow.webContents.openDevTools();
+
+  const menu = buildMenu(userResourcesPath);
+  Menu.setApplicationMenu(menu);
+
   return mainWindow;
 };
 
@@ -238,12 +314,7 @@ const launchPythonServer = async (
   });
 };
 
-// This method will be called when Electron has finished
-// initialization and is ready to create browser windows.
-// Some APIs can only be used after this event occurs.
-const windowsLocalAppData = path.join(app.getPath('home'), 'ComfyUI');
-log.info('Windows Local App Data directory: ', windowsLocalAppData);
-app.on('ready', async () => {
+function getResourcesPaths() {
   const { userResourcesPath, appResourcesPath } = app.isPackaged
     ? {
         // production: install python to per-user application data dir
@@ -255,6 +326,17 @@ app.on('ready', async () => {
         userResourcesPath: path.join(app.getAppPath(), 'assets'),
         appResourcesPath: path.join(app.getAppPath(), 'assets'),
       };
+
+  return { userResourcesPath, appResourcesPath };
+}
+
+// This method will be called when Electron has finished
+// initialization and is ready to create browser windows.
+// Some APIs can only be used after this event occurs.
+const windowsLocalAppData = path.join(app.getPath('home'), 'ComfyUI');
+log.info('Windows Local App Data directory: ', windowsLocalAppData);
+app.on('ready', async () => {
+  const { userResourcesPath, appResourcesPath } = getResourcesPaths();
   log.info(`userResourcesPath: ${userResourcesPath}`);
   log.info(`appResourcesPath: ${appResourcesPath}`);
 
@@ -268,7 +350,7 @@ app.on('ready', async () => {
 
   try {
     sendProgressUpdate(10, 'Creating menu...');
-    await createWindow();
+    await createWindow(userResourcesPath);
 
     sendProgressUpdate(20, 'Setting up comfy environment...');
     createComfyDirectories(userResourcesPath);
@@ -366,7 +448,8 @@ app.on('activate', () => {
   // On OS X it's common to re-create a window in the app when the
   // dock icon is clicked and there are no other windows open.
   if (BrowserWindow.getAllWindows().length === 0) {
-    createWindow();
+    const { userResourcesPath } = getResourcesPaths();
+    createWindow(userResourcesPath);
   }
 });
 
