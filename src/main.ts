@@ -6,18 +6,7 @@ import path from 'node:path';
 import { SetupTray } from './tray';
 import { IPC_CHANNELS, SENTRY_URL_ENDPOINT } from './constants';
 import dotenv from 'dotenv';
-import {
-  app,
-  BrowserWindow,
-  webContents,
-  screen,
-  ipcMain,
-  crashReporter,
-  Menu,
-  shell,
-  MenuItemConstructorOptions,
-  MenuItem,
-} from 'electron';
+import { app, BrowserWindow, webContents, screen, ipcMain, Menu, shell, MenuItem } from 'electron';
 import tar from 'tar';
 import log from 'electron-log/main';
 import * as Sentry from '@sentry/electron/main';
@@ -212,14 +201,11 @@ const isComfyServerReady = async (host: string, port: number): Promise<boolean> 
   const url = `http://${host}:${port}/queue`;
 
   try {
-    log.info(`Checking if server is running at ${url}`);
     const response = await axios.get(url, {
       timeout: 5000, // 5 seconds timeout
     });
 
     if (response.status >= 200 && response.status < 300) {
-      log.info(`Server is running at ${url}`);
-      log.info(response.data);
       return true;
     } else {
       log.warn(`Server responded with status ${response.status} at ${url}`);
