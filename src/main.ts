@@ -114,8 +114,6 @@ function buildMenu(userResourcesPath: string): Menu {
     );
   }
 
-  menu.append(new MenuItem({ label: 'Go', submenu: goMenu }));
-
   if (!isMac) {
     menu.append(
       new MenuItem({
@@ -124,6 +122,8 @@ function buildMenu(userResourcesPath: string): Menu {
       })
     );
   }
+
+  menu.append(new MenuItem({ label: 'Go', submenu: goMenu }));
 
   return menu;
 }
