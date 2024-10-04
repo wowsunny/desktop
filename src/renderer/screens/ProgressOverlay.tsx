@@ -1,7 +1,7 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import { ELECTRON_BRIDGE_API } from 'src/constants';
 import log from 'electron-log/renderer';
-
+import { ElectronAPI } from 'src/preload';
 const loadingTextStyle: React.CSSProperties = {
   marginBottom: '20px',
   textAlign: 'center',
@@ -41,11 +41,11 @@ function ProgressOverlay(): React.ReactElement {
     }
   }
 
-  // Updates when internal items change
   useEffect(() => {
     if (ELECTRON_BRIDGE_API in window) {
+      const electronApi: ElectronAPI = (window as any)[ELECTRON_BRIDGE_API];
       log.info(`${ELECTRON_BRIDGE_API} found, setting up listeners`);
-      (window as any).electronAPI.onProgressUpdate((update: ProgressUpdate) => {
+      electronApi.onProgressUpdate((update: ProgressUpdate) => {
         log.info('Received loading progress', update);
         updateProgress(update);
       });
@@ -53,6 +53,7 @@ function ProgressOverlay(): React.ReactElement {
       log.error(`${ELECTRON_BRIDGE_API} not found in window object`);
     }
   });
+
 
   useEffect(() => {
     if (ELECTRON_BRIDGE_API in window) {
