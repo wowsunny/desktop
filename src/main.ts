@@ -53,6 +53,27 @@ app.isPackaged &&
     ],
   });
 
+function loadComfyIntoMainWindow() {
+  if (!mainWindow) {
+    log.error('Trying to load ComfyUI into main window but it is not ready yet.');
+    return;
+  }
+  mainWindow.loadURL(`http://${host}:${port}`);
+}
+
+async function loadRendererIntoMainWindow(): Promise<void> {
+  if (!mainWindow) {
+    log.error('Trying to load renderer into main window but it is not ready yet.');
+    return;
+  }
+  if (MAIN_WINDOW_VITE_DEV_SERVER_URL) {
+    log.info('Loading Vite Dev Server');
+    await mainWindow.loadURL(MAIN_WINDOW_VITE_DEV_SERVER_URL);
+  } else {
+    mainWindow.loadFile(path.join(__dirname, `../renderer/${MAIN_WINDOW_VITE_NAME}/index.html`));
+  }
+}
+
 function restartApp() {
   log.info('Restarting app');
   app.relaunch();
@@ -60,8 +81,8 @@ function restartApp() {
 }
 
 let pythonProcess: ChildProcess | null = null;
-const host = '127.0.0.1'; // Replace with the desired IP address
-const port = 8188; // Replace with the port number your server is running on
+const host = '127.0.0.1';
+const port = 8188;
 let mainWindow: BrowserWindow | null;
 const messageQueue: Array<any> = []; // Stores mesaages before renderer is ready.
 
@@ -116,13 +137,7 @@ export const createWindow = async (userResourcesPath: string): Promise<BrowserWi
     autoHideMenuBar: true,
   });
 
-  // and load the index.html of the app.
-  if (MAIN_WINDOW_VITE_DEV_SERVER_URL) {
-    log.info('Loading Vite Dev Server');
-    await mainWindow.loadURL(MAIN_WINDOW_VITE_DEV_SERVER_URL);
-  } else {
-    mainWindow.loadFile(path.join(__dirname, `../renderer/${MAIN_WINDOW_VITE_NAME}/index.html`));
-  }
+  await loadRendererIntoMainWindow();
 
   ipcMain.on(IPC_CHANNELS.RENDERER_READY, () => {
     log.info('Received renderer-ready message!');
@@ -148,8 +163,6 @@ export const createWindow = async (userResourcesPath: string): Promise<BrowserWi
       app.dock.hide();
     }
   });
-  // Open the DevTools.
-  // mainWindow.webContents.openDevTools();
 
   const menu = buildMenu(userResourcesPath);
   Menu.setApplicationMenu(menu);
@@ -157,17 +170,9 @@ export const createWindow = async (userResourcesPath: string): Promise<BrowserWi
   return mainWindow;
 };
 
-// Server Heartbeat Listener Variables
-let serverHeartBeatReference: NodeJS.Timeout = null;
-const serverHeartBeatInterval: number = 15 * 1000; //15 Seconds
-async function serverHeartBeat() {
-  const isReady = await isComfyServerReady(host, port);
-  if (isReady) {
-    // Getting webcontents[0] is not reliable if app started with dev window
-    webContents.getAllWebContents()[0].send('python-server-status', 'active');
-  } else {
-    webContents.getAllWebContents()[0].send('python-server-status', 'false');
-  }
+// Server Heartbeat Listener Variable
+async function serverHeartBeat(): Promise<boolean> {
+  return isComfyServerReady(host, port);
 }
 
 const isComfyServerReady = async (host: string, port: number): Promise<boolean> => {
@@ -207,15 +212,9 @@ const launchPythonServer = async (
 ) => {
   const isServerRunning = await isComfyServerReady(host, port);
   if (isServerRunning) {
-    log.info('Python server is already running');
+    log.info('Python server is already running. Attaching to it.');
     // Server has been started outside the app, so attach to it.
-    setTimeout(() => {
-      // Not sure if needed but wait a few moments before sending the connect message up.
-      webContents.getAllWebContents()[0].send('python-server-status', 'active');
-    }, 5000);
-    clearInterval(serverHeartBeatReference);
-    serverHeartBeatReference = setInterval(serverHeartBeat, serverHeartBeatInterval);
-    return webContents.getAllWebContents()[0].loadURL('http://localhost:8188/');
+    return loadComfyIntoMainWindow();
   }
 
   log.info('Launching Python server...');
@@ -245,7 +244,7 @@ const launchPythonServer = async (
 
     const checkInterval = 1000; // Check every 1 second
 
-    const checkServerReady = async () => {
+    const checkServerReady = async (): Promise<void> => {
       currentWaitTime += 1000;
       if (currentWaitTime > maxFailWait) {
         //Something has gone wrong and we need to backout.
@@ -256,13 +255,11 @@ const launchPythonServer = async (
       if (isReady) {
         sendProgressUpdate(90, 'Finishing...');
         log.info('Python server is ready');
-        // Start the Heartbeat listener, send connected message to Renderer and resolve promise.
-        serverHeartBeatReference = setInterval(serverHeartBeat, serverHeartBeatInterval);
-        webContents.getAllWebContents()[0].send('python-server-status', 'active');
+
         //For now just replace the source of the main window to the python server
-        setTimeout(() => webContents.getAllWebContents()[0].loadURL('http://localhost:8188/'), 1000);
+        setTimeout(() => loadComfyIntoMainWindow(), 1000);
         clearTimeout(spawnServerTimeout);
-        resolve();
+        return resolve();
       } else {
         log.info('Ping failed. Retrying...');
         spawnServerTimeout = setTimeout(checkServerReady, checkInterval);
