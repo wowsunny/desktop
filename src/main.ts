@@ -34,6 +34,8 @@ import('electron-squirrel-startup').then((ess) => {
 app.isPackaged &&
   Sentry.init({
     dsn: SENTRY_URL_ENDPOINT,
+    autoSessionTracking: false,
+
     /* //WIP gather and send log from main 
     beforeSend(event, hint) {
       hint.attachments = [
