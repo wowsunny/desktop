@@ -17,11 +17,20 @@ export interface ProgressUpdate {
   overwrite?: boolean;
 }
 
+const outerContainerStyle: React.CSSProperties = {
+  width: '100%',
+  height: '100vh',
+  overflow: 'hidden',
+};
+
 const containerStyle: React.CSSProperties = {
   display: 'flex',
   flexDirection: 'column',
   alignItems: 'center',
+  justifyContent: 'center', // Center vertically
   width: '100%',
+  height:'100%',
+  overflow: 'scroll',
   padding: '20px',
 };
 
@@ -79,6 +88,8 @@ function ProgressOverlay(): React.ReactElement {
   }, []);
 
   return (
+    <div style={outerContainerStyle}>
+
     <div style={containerStyle}>
       <div style={loadingTextStyle} id="loading-text">
         {status}
@@ -86,6 +97,7 @@ function ProgressOverlay(): React.ReactElement {
       <div style={logContainerStyle}>
         {status !== 'Finishing...' && <AnimatedLogDisplay logs={logs} />}
       </div>
+    </div>
     </div>
   );
 }
