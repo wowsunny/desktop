@@ -13,6 +13,7 @@ import * as Sentry from '@sentry/electron/main';
 
 import { updateElectronApp, UpdateSourceType } from 'update-electron-app';
 import * as net from 'net';
+import { ProgressUpdate } from './renderer/screens/ProgressOverlay';
 
 updateElectronApp({
   updateSource: {
@@ -260,7 +261,7 @@ const launchPythonServer = async (
       }
       const isReady = await isComfyServerReady(host, port);
       if (isReady) {
-        sendProgressUpdate(90, 'Finishing...');
+        sendProgressUpdate('Finishing...');
         log.info('Python server is ready');
 
         //For now just replace the source of the main window to the python server
@@ -296,7 +297,7 @@ function getResourcesPaths() {
 // This method will be called when Electron has finished
 // initialization and is ready to create browser windows.
 // Some APIs can only be used after this event occurs.
-const windowsLocalAppData = path.join(app.getPath('home'), 'electron', 'ComfyUI');
+const windowsLocalAppData = path.join(app.getPath('home'), 'comfyui-electron');
 log.info('Windows Local App Data directory: ', windowsLocalAppData);
 app.on('ready', async () => {
   log.info('App ready');
@@ -319,25 +320,20 @@ app.on('ready', async () => {
       log.error(`ERROR: Failed to find available port: ${err}`);
       throw err;
     });
-    sendProgressUpdate(20, 'Setting up comfy environment...');
+    sendProgressUpdate('Setting up comfy environment...');
     createComfyDirectories(userResourcesPath);
     const pythonRootPath = path.join(userResourcesPath, 'python');
     const pythonInterpreterPath =
       process.platform === 'win32'
         ? path.join(pythonRootPath, 'python.exe')
         : path.join(pythonRootPath, 'bin', 'python');
-    sendProgressUpdate(40, 'Setting up Python Environment...');
+    sendProgressUpdate('Setting up Python Environment...');
     await setupPythonEnvironment(pythonInterpreterPath, appResourcesPath, userResourcesPath);
-    sendProgressUpdate(45, 'Starting Comfy Server...', {
-      endPercentage: 80,
-      duration: 5000,
-      steps: 10,
-    });
+    sendProgressUpdate('Starting Comfy Server...');
     await launchPythonServer(pythonInterpreterPath, appResourcesPath, userResourcesPath);
   } catch (error) {
     log.error(error);
     sendProgressUpdate(
-      0,
       'Was not able to start ComfyUI. Please check the logs for more details. You can open it from the tray icon.'
     );
   }
@@ -354,66 +350,36 @@ interface ProgressOptions {
   endPercentage?: number;
   duration?: number;
   steps?: number;
+  overwrite?: boolean;
 }
 
-function sendProgressUpdate(percentage: number, status: string, options?: ProgressOptions): void {
-  if (progressInterval) {
-    clearInterval(progressInterval);
-    progressInterval = null;
-  }
-
+function sendProgressUpdate(status: string): void {
   if (mainWindow) {
     log.info('Sending progress update to renderer ' + status);
 
-    const sendUpdate = (currentPercentage: number) => {
+    const sendUpdate = (status: string) => {
+      const newMessage = {
+        channel: IPC_CHANNELS.LOADING_PROGRESS,
+        data: {
+          status,
+        },
+      };
       if (!mainWindow.webContents || mainWindow.webContents.isLoading()) {
         log.info('Queueing message since renderer is not ready yet.');
-        messageQueue.push({
-          channel: IPC_CHANNELS.LOADING_PROGRESS,
-          data: {
-            percentage: currentPercentage,
-            status,
-          },
-        });
+        messageQueue.push(newMessage);
         return;
-      } else if (messageQueue.length > 0) {
+      }
+
+      if (messageQueue.length > 0) {
         while (messageQueue.length > 0) {
           const message = messageQueue.shift();
           log.info('Sending queued message ', message.channel, message.data);
           mainWindow.webContents.send(message.channel, message.data);
         }
       }
-
-      mainWindow.webContents.send(IPC_CHANNELS.LOADING_PROGRESS, {
-        percentage: currentPercentage,
-        status,
-      });
+      mainWindow.webContents.send(newMessage.channel, newMessage.data);
     };
-
-    if (options && options.endPercentage && options.endPercentage > percentage) {
-      const duration = options.duration || 5000; // Default to 5 seconds
-      const steps = options.steps || 10; // Default to 10 steps
-      const stepDuration = duration / steps;
-      const stepSize = (options.endPercentage - percentage) / steps;
-
-      let currentStep = 0;
-
-      sendUpdate(percentage);
-
-      progressInterval = setInterval(() => {
-        currentStep++;
-        const currentPercentage = Math.min(percentage + stepSize * currentStep, options.endPercentage);
-        sendUpdate(currentPercentage);
-
-        if (currentStep >= steps) {
-          clearInterval(progressInterval);
-          progressInterval = null;
-        }
-      }, stepDuration);
-    } else {
-      // If no "inch forward" options provided, just send the update immediately
-      sendUpdate(percentage);
-    }
+    sendUpdate(status);
   }
 }
 
@@ -477,6 +443,7 @@ app.on('quit', () => {
 // for applications and their menu bar to stay active until the user quits
 // explicitly with Cmd + Q.
 app.on('window-all-closed', () => {
+  log.info('Window all closed');
   if (process.platform !== 'darwin') {
     app.quit();
   }
@@ -518,10 +485,18 @@ const spawnPython = (
     pythonProcess.stderr.on('data', (data) => {
       const message = data.toString().trim();
       pythonLog.error(`stderr: ${message}`);
+      if (mainWindow) {
+        log.info(`Sending log message to renderer: ${message}`);
+        mainWindow.webContents.send(IPC_CHANNELS.LOG_MESSAGE, message);
+      }
     });
     pythonProcess.stdout.on('data', (data) => {
       const message = data.toString().trim();
       pythonLog.info(`stdout: ${message}`);
+      if (mainWindow) {
+        log.info(`Sending log message to renderer: ${message}`);
+        mainWindow.webContents.send(IPC_CHANNELS.LOG_MESSAGE, message);
+      }
     });
   }
 
@@ -544,15 +519,24 @@ const spawnPythonAsync = (
     if (options.stdx) {
       log.info('Setting up python process stdout/stderr listeners');
       pythonProcess.stderr.on('data', (data) => {
-        stderr += data.toString();
-        log.error(`stderr: ${data}`);
+        const message = data.toString();
+        stderr += message;
+        log.error(message);
+        if (mainWindow) {
+          log.info(`Sending log message to renderer: ${message}`);
+          mainWindow.webContents.send(IPC_CHANNELS.LOG_MESSAGE, message);
+        }
       });
       pythonProcess.stdout.on('data', (data) => {
-        stdout += data.toString();
-        log.info(`stdout: ${data}`);
+        const message = data.toString();
+        stdout += message;
+        log.info(message);
+        if (mainWindow) {
+          log.info(`Sending log message to renderer: ${message}`);
+          mainWindow.webContents.send(IPC_CHANNELS.LOG_MESSAGE, message);
+        }
       });
     }
-
     pythonProcess.on('close', (code) => {
       log.info(`Python process exited with code ${code}`);
       resolve({ exitCode: code, stdout, stderr });
