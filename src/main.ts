@@ -6,12 +6,13 @@ import path from 'node:path';
 import { SetupTray } from './tray';
 import { IPC_CHANNELS, SENTRY_URL_ENDPOINT } from './constants';
 import dotenv from 'dotenv';
-import { app, BrowserWindow, webContents, screen, ipcMain, Menu, MenuItem } from 'electron';
+import { app, BrowserWindow, screen, ipcMain, Menu, MenuItem } from 'electron';
 import tar from 'tar';
 import log from 'electron-log/main';
 import * as Sentry from '@sentry/electron/main';
 
 import { updateElectronApp, UpdateSourceType } from 'update-electron-app';
+import * as net from 'net';
 
 updateElectronApp({
   updateSource: {
@@ -84,7 +85,7 @@ function restartApp() {
 
 let pythonProcess: ChildProcess | null = null;
 const host = '127.0.0.1';
-const port = 8188;
+let port = 8188;
 let mainWindow: BrowserWindow | null;
 const messageQueue: Array<any> = []; // Stores mesaages before renderer is ready.
 
@@ -237,7 +238,11 @@ const launchPythonServer = async (
       ...(process.env.COMFYUI_CPU_ONLY === 'true' ? ['--cpu'] : []),
       '--front-end-version',
       'Comfy-Org/ComfyUI_frontend@latest',
+      '--port',
+      port.toString(),
     ];
+
+    log.info(`Starting ComfyUI using port ${port}.`);
 
     pythonProcess = spawnPython(pythonInterpreterPath, comfyMainCmd, path.dirname(scriptPath), {
       logFile: 'comfyui',
@@ -309,9 +314,11 @@ app.on('ready', async () => {
   createDirIfNotExists(userResourcesPath);
 
   try {
-    sendProgressUpdate(10, 'Creating menu...');
     await createWindow(userResourcesPath);
-
+    port = await findAvailablePort(8000, 9999).catch((err) => {
+      log.error(`ERROR: Failed to find available port: ${err}`);
+      throw err;
+    });
     sendProgressUpdate(20, 'Setting up comfy environment...');
     createComfyDirectories(userResourcesPath);
     const pythonRootPath = path.join(userResourcesPath, 'python');
@@ -747,4 +754,28 @@ async function createComfyConfigFile(userSettingsPath: string): Promise<void> {
   } catch (error) {
     log.error(`Failed to create ComfyUI config file: ${error}`);
   }
+}
+
+function findAvailablePort(startPort: number, endPort: number): Promise<number> {
+  return new Promise((resolve, reject) => {
+    function tryPort(port: number) {
+      if (port > endPort) {
+        reject(new Error('No available ports found'));
+        return;
+      }
+
+      const server = net.createServer();
+      server.listen(port, host, () => {
+        server.once('close', () => {
+          resolve(port);
+        });
+        server.close();
+      });
+      server.on('error', () => {
+        tryPort(port + 1);
+      });
+    }
+
+    tryPort(startPort);
+  });
 }
