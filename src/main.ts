@@ -13,6 +13,7 @@ import * as Sentry from '@sentry/electron/main';
 
 import { updateElectronApp, UpdateSourceType } from 'update-electron-app';
 import * as net from 'net';
+import { graphics } from 'systeminformation';
 
 log.initialize();
 // Handle creating/removing shortcuts on Windows when installing/uninstalling.
@@ -67,6 +68,29 @@ if (!gotTheLock) {
           events: ['abnormal-exit', 'killed', 'crashed', 'launch-failed', 'oom', 'integrity-failure'],
         }),
       ],
+    });
+
+  graphics()
+    .then((graphicsInfo) => {
+      log.info('GPU Info: ', graphicsInfo);
+
+      const gpuInfo = graphicsInfo.controllers.map((gpu, index) => ({
+        [`gpu_${index}`]: {
+          vendor: gpu.vendor,
+          model: gpu.model,
+          vram: gpu.vram,
+          driver: gpu.driverVersion,
+        },
+      }));
+
+      // Combine all GPU info into a single object
+      const allGpuInfo = Object.assign({}, ...gpuInfo);
+      log.info('GPU Info: ', allGpuInfo);
+      // Set Sentry context with all GPU information
+      Sentry.setContext('gpus', allGpuInfo);
+    })
+    .catch((e) => {
+      log.error('Error getting GPU info: ', e);
     });
 
   // This method will be called when Electron has finished
