@@ -42,12 +42,12 @@ const FirstTimeSetup: React.FC<FirstTimeSetupProps> = ({ onComplete }) => {
         Please select a directory for where ComfyUI will store models, outputs, etc. If you already have a ComfyUI
         setup, you can select that to reuse the model files.
       </p>
-      <button onClick={handleDirectorySelect} style={styles.button}>
+      <button onClick={handleDirectorySelect} style={styles.selectButton}>
         Select Directory
       </button>
       {selectedPath && (
         <div style={styles.pathDisplay}>
-          <p>Selected path: {selectedPath}</p>
+          <p>{selectedPath}</p>
         </div>
       )}
       <button
@@ -69,37 +69,55 @@ const styles = {
     padding: '20px',
     maxWidth: '600px',
     margin: '0 auto',
+    justifyContent: 'center',
   },
   title: {
     fontSize: '24px',
     marginBottom: '20px',
+    color: '#ffffff',
   },
   description: {
     textAlign: 'center' as const,
     marginBottom: '20px',
+    lineHeight: '1.5',
   },
   button: {
     padding: '10px 20px',
-    fontSize: '16px',
+    fontSize: '14px',
     cursor: 'pointer',
     marginBottom: '10px',
+    borderRadius: '3px',
+    border: 'none',
+    fontWeight: 'bold',
+  },
+  selectButton: {
+    padding: '10px 20px',
+    fontSize: '14px',
+    cursor: 'pointer',
+    marginBottom: '10px',
+    borderRadius: '3px',
+    border: 'none',
+    fontWeight: 'bold',
+    backgroundColor: '#0078d4',
+    color: '#ffffff',
   },
   pathDisplay: {
     marginTop: '10px',
     marginBottom: '20px',
     padding: '10px',
-    backgroundColor: '#f0f0f0',
-    borderRadius: '5px',
+    backgroundColor: '#2d2d2d',
+    borderRadius: '3px',
     width: '100%',
+    color: '#d4d4d4',
+    textAlign: 'center'
   },
   installButton: {
     backgroundColor: '#4CAF50',
-    color: 'white',
-    border: 'none',
+    color: '#ffffff',
   },
   disabledButton: {
-    backgroundColor: '#cccccc',
-    color: '#666666',
+    backgroundColor: '#4d4d4d',
+    color: '#a0a0a0',
     cursor: 'not-allowed',
   },
 };

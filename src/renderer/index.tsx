@@ -13,7 +13,8 @@ const bodyStyle: React.CSSProperties = {
   alignItems: 'center',
   height: '100vh',
   margin: '0',
-  backgroundColor: '#f0f0f0',
+  color: '#d4d4d4',
+  backgroundColor: '#1e1e1e',
 };
 
 // Main entry point for the front end renderer.
@@ -44,7 +45,11 @@ const Home: React.FC = () => {
   }
 
   if (showSetup) {
-    return <FirstTimeSetup onComplete={() => setShowSetup(false)} />;
+    return (
+      <div style={bodyStyle}>
+        <FirstTimeSetup onComplete={() => setShowSetup(false)} />
+      </div>
+    )
   }
 
   return (
