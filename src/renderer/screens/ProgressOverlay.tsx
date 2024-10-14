@@ -45,7 +45,7 @@ const logContainerStyle: React.CSSProperties = {
   fontFamily: "'Roboto Mono', monospace",
   fontSize: '14px',
   lineHeight: '1.5',
-  color: '#e0e0e0',
+  color: '#9198a1',
   boxShadow: '0 4px 6px rgba(0, 0, 0, 0.1)',
 };
 
