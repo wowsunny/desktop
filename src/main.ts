@@ -11,7 +11,6 @@ import {
   IPCChannel,
   SENTRY_URL_ENDPOINT,
 } from './constants';
-import dotenv from 'dotenv';
 import { app, BrowserWindow, dialog, screen, ipcMain, Menu, MenuItem } from 'electron';
 import tar from 'tar';
 import log from 'electron-log/main';
@@ -20,27 +19,31 @@ import Store from 'electron-store';
 import { updateElectronApp, UpdateSourceType } from 'update-electron-app';
 import * as net from 'net';
 import { graphics } from 'systeminformation';
-import { createModelConfigFiles } from './config/extra_model_config';
+import { createModelConfigFiles, readBasePathFromConfig } from './config/extra_model_config';
 
 let comfyServerProcess: ChildProcess | null = null;
 const host = '127.0.0.1';
 let port = 8188;
 let mainWindow: BrowserWindow | null;
+let store: Store<StoreType> | null;
 const messageQueue: Array<any> = []; // Stores mesaages before renderer is ready.
 
 import { StoreType } from './store';
 log.initialize();
 // Handle creating/removing shortcuts on Windows when installing/uninstalling.
 // Run this as early in the main process as possible.
-if (require('electron-squirrel-startup')) app.quit();
-
-const store = new Store<StoreType>();
+if (require('electron-squirrel-startup')) {
+  log.info('App already being set up by squirrel. Exiting...');
+  app.quit();
+}
 
 const gotTheLock = app.requestSingleInstanceLock();
 
 if (!gotTheLock) {
+  log.info('App already running. Exiting...');
   app.quit();
 } else {
+  store = new Store<StoreType>();
   app.on('second-instance', (event, commandLine, workingDirectory, additionalData) => {
     log.info('Received second instance message!');
     log.info(additionalData);
@@ -137,7 +140,7 @@ if (!gotTheLock) {
         });
       });
       await handleFirstTimeSetup();
-      const { userResourcesPath, appResourcesPath, pythonInstallPath, modelConfigPath } =
+      const { userResourcesPath, appResourcesPath, pythonInstallPath, modelConfigPath, basePath } =
         await determineResourcesPaths();
       SetupTray(mainWindow, userResourcesPath);
       port = await findAvailablePort(8000, 9999).catch((err) => {
@@ -148,7 +151,7 @@ if (!gotTheLock) {
       sendProgressUpdate('Setting up Python Environment...');
       const pythonInterpreterPath = await setupPythonEnvironment(appResourcesPath, pythonInstallPath);
       sendProgressUpdate('Starting Comfy Server...');
-      await launchPythonServer(pythonInterpreterPath, appResourcesPath, userResourcesPath, modelConfigPath);
+      await launchPythonServer(pythonInterpreterPath, appResourcesPath, modelConfigPath, basePath);
       updateElectronApp({
         updateSource: {
           type: UpdateSourceType.StaticStorage,
@@ -202,6 +205,7 @@ if (!gotTheLock) {
   app.on('window-all-closed', () => {
     log.info('Window all closed');
     if (process.platform !== 'darwin') {
+      log.info('Quitting ComfyUI because window all closed');
       app.quit();
     }
   });
@@ -374,8 +378,8 @@ let spawnServerTimeout: NodeJS.Timeout = null;
 const launchPythonServer = async (
   pythonInterpreterPath: string,
   appResourcesPath: string,
-  userResourcesPath: string,
-  modelConfigPath: string
+  modelConfigPath: string,
+  basePath: string
 ) => {
   const isServerRunning = await isComfyServerReady(host, port);
   if (isServerRunning) {
@@ -388,9 +392,9 @@ const launchPythonServer = async (
 
   return new Promise<void>(async (resolve, reject) => {
     const scriptPath = path.join(appResourcesPath, 'ComfyUI', 'main.py');
-    const userDirectoryPath = path.join(userResourcesPath, 'user');
-    const inputDirectoryPath = path.join(userResourcesPath, 'input');
-    const outputDirectoryPath = path.join(userResourcesPath, 'output');
+    const userDirectoryPath = path.join(basePath, 'user');
+    const inputDirectoryPath = path.join(basePath, 'input');
+    const outputDirectoryPath = path.join(basePath, 'output');
     const comfyMainCmd = [
       scriptPath,
       '--user-directory',
@@ -544,16 +548,6 @@ const spawnPython = (
         mainWindow.webContents.send(IPC_CHANNELS.LOG_MESSAGE, message);
       }
     });
-
-    const signalHandler = (signal: NodeJS.Signals) => {
-      log.warn(`Received ${signal}, terminating Python process`);
-      if (!pythonProcess.killed) {
-        pythonProcess.kill(signal); // Send the signal to the Python process
-      }
-    };
-
-    process.on('SIGINT', signalHandler);
-    process.on('SIGTERM', signalHandler);
   }
 
   return pythonProcess;
@@ -569,15 +563,8 @@ const spawnPythonAsync = (
     log.info(`Spawning python process with command: ${cmd.join(' ')} in directory: ${cwd}`);
     const pythonProcess: ChildProcess = spawn(pythonInterpreterPath, cmd, { cwd });
 
-    let timeoutId: NodeJS.Timeout | null = null;
-
     const cleanup = () => {
-      if (timeoutId) clearTimeout(timeoutId);
       pythonProcess.removeAllListeners();
-      if (!pythonProcess.killed) {
-        pythonProcess.kill();
-      }
-      process.exit();
     };
 
     if (options.stdx) {
@@ -609,18 +596,6 @@ const spawnPythonAsync = (
       log.error(`Failed to start Python process: ${err}`);
       reject(err);
     });
-
-    const signalHandler = (signal: NodeJS.Signals) => {
-      log.warn(`Received ${signal}, terminating Python process`);
-      cleanup();
-      if (!pythonProcess.killed) {
-        pythonProcess.kill(signal);
-      }
-      process.exit();
-    };
-
-    process.on('SIGINT', signalHandler);
-    process.on('SIGTERM', signalHandler);
   });
 };
 
@@ -865,8 +840,10 @@ async function determineResourcesPaths(): Promise<{
   pythonInstallPath: string;
   appResourcesPath: string;
   modelConfigPath: string;
+  basePath: string | null;
 }> {
   const modelConfigPath = path.join(app.getPath('userData'), 'extra_models_config.yaml');
+  const basePath = await readBasePathFromConfig(modelConfigPath);
   if (!app.isPackaged) {
     return {
       // development: install python to in-tree assets dir
@@ -874,6 +851,7 @@ async function determineResourcesPaths(): Promise<{
       pythonInstallPath: path.join(app.getAppPath(), 'assets'),
       appResourcesPath: path.join(app.getAppPath(), 'assets'),
       modelConfigPath: modelConfigPath,
+      basePath: basePath,
     };
   }
 
@@ -891,6 +869,7 @@ async function determineResourcesPaths(): Promise<{
     pythonInstallPath: defaultPythonInstallPath,
     appResourcesPath: appResourcePath,
     modelConfigPath: modelConfigPath,
+    basePath: basePath,
   };
 }
 
