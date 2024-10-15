@@ -168,7 +168,7 @@ if (!gotTheLock) {
         log.info('Open dialog');
         return dialog.showOpenDialogSync({
           ...options,
-          defaultPath: app.getPath('desktop'),
+          defaultPath: app.getPath('documents'),
         });
       });
       await handleFirstTimeSetup();
@@ -659,19 +659,6 @@ async function setupPythonEnvironment(appResourcesPath: string, pythonResourcesP
       rehydrateCmd = ['-m', 'uv', 'pip', 'install', '-r', reqPath, '--index-strategy', 'unsafe-best-match'];
     }
 
-    //TODO(robinhuang): remove this once uv is included in the python bundle.
-    const { exitCode: uvExitCode } = await spawnPythonAsync(
-      pythonInterpreterPath,
-      ['-m', 'pip', 'install', '--upgrade', 'uv'],
-      pythonRootPath,
-      { stdx: true }
-    );
-
-    if (uvExitCode !== 0) {
-      log.error('Failed to install uv');
-      throw new Error('Failed to install uv');
-    }
-
     const { exitCode } = await spawnPythonAsync(pythonInterpreterPath, rehydrateCmd, pythonRootPath, { stdx: true });
 
     if (exitCode === 0) {
@@ -701,10 +688,6 @@ type DirectoryStructure = (string | [string, string[]])[];
 
 // Create directories needed by ComfyUI in the user's data directory.
 function createComfyDirectories(localComfyDirectory: string): void {
-  if (!localComfyDirectory.endsWith('ComfyUI')) {
-    localComfyDirectory = path.join(localComfyDirectory, 'ComfyUI');
-  }
-
   log.info(`Creating ComfyUI directories in ${localComfyDirectory}`);
 
   const directories: DirectoryStructure = [
@@ -846,6 +829,7 @@ async function handleFirstTimeSetup() {
       );
       selectedDirectory = path.join(selectedDirectory, 'ComfyUI');
     }
+
     createComfyDirectories(selectedDirectory);
 
     const { modelConfigPath } = await determineResourcesPaths();
