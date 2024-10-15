@@ -9,6 +9,11 @@ export const IPC_CHANNELS = {
   FIRST_TIME_SETUP_COMPLETE: 'first-time-setup-complete',
 } as const;
 
+export const COMFY_ERROR_MESSAGE =
+  'Was not able to start ComfyUI. Please check the logs for more details. You can open it from the tray icon.';
+
+export const COMFY_FINISHING_MESSAGE = 'Finishing...';
+
 export type IPCChannel = (typeof IPC_CHANNELS)[keyof typeof IPC_CHANNELS];
 
 export const ELECTRON_BRIDGE_API = 'electronAPI';

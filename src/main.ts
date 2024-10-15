@@ -4,7 +4,13 @@ import fs from 'fs';
 import axios from 'axios';
 import path from 'node:path';
 import { SetupTray } from './tray';
-import { IPC_CHANNELS, IPCChannel, SENTRY_URL_ENDPOINT } from './constants';
+import {
+  COMFY_ERROR_MESSAGE,
+  COMFY_FINISHING_MESSAGE,
+  IPC_CHANNELS,
+  IPCChannel,
+  SENTRY_URL_ENDPOINT,
+} from './constants';
 import dotenv from 'dotenv';
 import { app, BrowserWindow, dialog, screen, ipcMain, Menu, MenuItem } from 'electron';
 import tar from 'tar';
@@ -16,7 +22,7 @@ import * as net from 'net';
 import { graphics } from 'systeminformation';
 import { createModelConfigFiles } from './config/extra_model_config';
 
-let pythonProcess: ChildProcess | null = null;
+let comfyServerProcess: ChildProcess | null = null;
 const host = '127.0.0.1';
 let port = 8188;
 let mainWindow: BrowserWindow | null;
@@ -29,15 +35,6 @@ log.initialize();
 if (require('electron-squirrel-startup')) app.quit();
 
 const store = new Store<StoreType>();
-
-updateElectronApp({
-  updateSource: {
-    type: UpdateSourceType.StaticStorage,
-    baseUrl: `https://updater.comfy.org/${process.platform}/${process.arch}`,
-  },
-  logger: log,
-  updateInterval: '2 hours',
-});
 
 const gotTheLock = app.requestSingleInstanceLock();
 
@@ -152,11 +149,17 @@ if (!gotTheLock) {
       const pythonInterpreterPath = await setupPythonEnvironment(appResourcesPath, pythonInstallPath);
       sendProgressUpdate('Starting Comfy Server...');
       await launchPythonServer(pythonInterpreterPath, appResourcesPath, userResourcesPath, modelConfigPath);
+      updateElectronApp({
+        updateSource: {
+          type: UpdateSourceType.StaticStorage,
+          baseUrl: `https://updater.comfy.org/${process.platform}/${process.arch}`,
+        },
+        logger: log,
+        updateInterval: '2 hours',
+      });
     } catch (error) {
       log.error(error);
-      sendProgressUpdate(
-        'Was not able to start ComfyUI. Please check the logs for more details. You can open it from the tray icon.'
-      );
+      sendProgressUpdate(COMFY_ERROR_MESSAGE);
     }
 
     ipcMain.on(IPC_CHANNELS.RESTART_APP, () => {
@@ -407,7 +410,7 @@ const launchPythonServer = async (
 
     log.info(`Starting ComfyUI using port ${port}.`);
 
-    pythonProcess = spawnPython(pythonInterpreterPath, comfyMainCmd, path.dirname(scriptPath), {
+    comfyServerProcess = spawnPython(pythonInterpreterPath, comfyMainCmd, path.dirname(scriptPath), {
       logFile: 'comfyui',
       stdx: true,
     });
@@ -423,7 +426,7 @@ const launchPythonServer = async (
       }
       const isReady = await isComfyServerReady(host, port);
       if (isReady) {
-        sendProgressUpdate('Finishing...');
+        sendProgressUpdate(COMFY_FINISHING_MESSAGE);
         log.info('Python server is ready');
 
         //For now just replace the source of the main window to the python server
@@ -474,8 +477,8 @@ const sendRendererMessage = (channel: IPCChannel, data: any) => {
 };
 
 const killPythonServer = async (): Promise<void> => {
-  if (pythonProcess) {
-    log.info('Killing python server.');
+  if (comfyServerProcess) {
+    log.info('Killing ComfyUI python server.');
 
     return new Promise<void>((resolve, reject) => {
       // Set up a timeout in case the process doesn't exit
@@ -484,15 +487,15 @@ const killPythonServer = async (): Promise<void> => {
       }, 10000);
 
       // Listen for the 'exit' event
-      pythonProcess.once('exit', (code, signal) => {
+      comfyServerProcess.once('exit', (code, signal) => {
         clearTimeout(timeout);
         log.info(`Python server exited with code ${code} and signal ${signal}`);
-        pythonProcess = null;
+        comfyServerProcess = null;
         resolve();
       });
 
       // Attempt to kill the process
-      const result = pythonProcess.kill();
+      const result = comfyServerProcess.kill();
       if (!result) {
         clearTimeout(timeout);
         reject(new Error('Failed to initiate kill signal for python server'));
@@ -541,6 +544,16 @@ const spawnPython = (
         mainWindow.webContents.send(IPC_CHANNELS.LOG_MESSAGE, message);
       }
     });
+
+    const signalHandler = (signal: NodeJS.Signals) => {
+      log.warn(`Received ${signal}, terminating Python process`);
+      if (!pythonProcess.killed) {
+        pythonProcess.kill(signal); // Send the signal to the Python process
+      }
+    };
+
+    process.on('SIGINT', signalHandler);
+    process.on('SIGTERM', signalHandler);
   }
 
   return pythonProcess;
@@ -551,49 +564,63 @@ const spawnPythonAsync = (
   cmd: string[],
   cwd: string,
   options = { stdx: true }
-): Promise<{ exitCode: number | null; stdout: string; stderr: string }> => {
+): Promise<{ exitCode: number | null }> => {
   return new Promise((resolve, reject) => {
     log.info(`Spawning python process with command: ${cmd.join(' ')} in directory: ${cwd}`);
     const pythonProcess: ChildProcess = spawn(pythonInterpreterPath, cmd, { cwd });
 
-    let stdout = '';
-    let stderr = '';
+    let timeoutId: NodeJS.Timeout | null = null;
+
+    const cleanup = () => {
+      if (timeoutId) clearTimeout(timeoutId);
+      pythonProcess.removeAllListeners();
+      if (!pythonProcess.killed) {
+        pythonProcess.kill();
+      }
+      process.exit();
+    };
 
     if (options.stdx) {
       log.info('Setting up python process stdout/stderr listeners');
       pythonProcess.stderr.on('data', (data) => {
         const message = data.toString();
-        stderr += message;
         log.error(message);
         if (mainWindow) {
-          log.info(`Sending log message to renderer: ${message}`);
           mainWindow.webContents.send(IPC_CHANNELS.LOG_MESSAGE, message);
         }
       });
       pythonProcess.stdout.on('data', (data) => {
         const message = data.toString();
-        stdout += message;
         log.info(message);
         if (mainWindow) {
-          log.info(`Sending log message to renderer: ${message}`);
           mainWindow.webContents.send(IPC_CHANNELS.LOG_MESSAGE, message);
         }
       });
     }
+
     pythonProcess.on('close', (code) => {
+      cleanup();
       log.info(`Python process exited with code ${code}`);
-      resolve({ exitCode: code, stdout, stderr });
+      resolve({ exitCode: code });
     });
 
     pythonProcess.on('error', (err) => {
+      cleanup();
       log.error(`Failed to start Python process: ${err}`);
       reject(err);
     });
 
-    process.on('exit', () => {
-      log.warn('Parent process exiting, killing Python process');
-      pythonProcess.kill();
-    });
+    const signalHandler = (signal: NodeJS.Signals) => {
+      log.warn(`Received ${signal}, terminating Python process`);
+      cleanup();
+      if (!pythonProcess.killed) {
+        pythonProcess.kill(signal);
+      }
+      process.exit();
+    };
+
+    process.on('SIGINT', signalHandler);
+    process.on('SIGTERM', signalHandler);
   });
 };
 
@@ -646,22 +673,11 @@ async function setupPythonEnvironment(appResourcesPath: string, pythonResourcesP
         'install',
         '--no-index',
         '--no-deps',
-        '--verbose',
         ...(await fsPromises.readdir(wheelsPath)).map((x) => path.join(wheelsPath, x)),
       ];
     } else {
       const reqPath = path.join(pythonRootPath, 'requirements.compiled');
-      rehydrateCmd = [
-        '-m',
-        'uv',
-        'pip',
-        'install',
-        '-r',
-        reqPath,
-        '--index-strategy',
-        'unsafe-best-match',
-        '--verbose',
-      ];
+      rehydrateCmd = ['-m', 'uv', 'pip', 'install', '-r', reqPath, '--index-strategy', 'unsafe-best-match'];
     }
 
     //TODO(robinhuang): remove this once uv is included in the python bundle.
