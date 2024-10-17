@@ -30,7 +30,22 @@ const commonPaths = {
   upscale_models: 'models/upscale_models/',
   vae: 'models/vae/',
   vae_approx: 'models/vae_approx/',
-  //custom_nodes: 'custom_nodes/', TODO(robinhuang): https://github.com/Comfy-Org/electron/issues/94
+  // TODO(robinhuang): Remove when we have a better way to specify base model paths.
+  animatediff_models: 'models/animatediff_models/',
+  animatediff_motion_lora: 'models/animatediff_motion_lora/',
+  animatediff_video_formats: 'models/animatediff_video_formats/',
+  ipadater: 'models/ipadater/',
+  liveportrait: 'models/liveportrait/',
+  insightface: 'models/insightface/',
+  layerstyle: 'models/layerstyle/',
+  LLM: 'models/LLM/',
+  Joy_caption: 'models/Joy_caption/',
+  sams: 'models/sams/',
+  blip: 'models/blip/',
+  CogVideo: 'models/CogVideo/',
+  xlabs: 'models/xlabs/',
+  // End custom node model directories.
+  custom_nodes: 'custom_nodes/',
 };
 
 const configTemplates: Record<string, ModelPaths> = {
