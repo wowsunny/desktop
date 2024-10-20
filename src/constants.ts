@@ -13,6 +13,7 @@ export const IPC_CHANNELS = {
   GET_COMFYUI_URL: 'get-comfyui-url',
   TOGGLE_LOGS: 'toggle-logs',
   COMFYUI_READY: 'comfyui-ready',
+  GET_PRELOAD_SCRIPT: 'get-preload-script',
 } as const;
 
 export const COMFY_ERROR_MESSAGE =

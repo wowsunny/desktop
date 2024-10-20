@@ -1,11 +1,11 @@
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useEffect, useState, useCallback, useRef } from 'react';
 import ProgressOverlay from './screens/ProgressOverlay';
 import log from 'electron-log/renderer';
 import FirstTimeSetup from './screens/FirstTimeSetup';
 import { ElectronAPI } from 'src/preload';
 import { ELECTRON_BRIDGE_API } from 'src/constants';
 import LogViewer from './screens/LogViewer';
-
+import path from 'path';
 export interface ProgressUpdate {
   status: string;
   overwrite?: boolean;
@@ -26,6 +26,8 @@ const bodyStyle: React.CSSProperties = {
 const iframeStyle: React.CSSProperties = {
   flexGrow: 1,
   border: 'none',
+  width: '100%',
+  height: '100%',
 };
 
 const logContainerStyle: React.CSSProperties = {
@@ -51,6 +53,8 @@ const Home: React.FC = () => {
   const [showStreamingLogs, setShowStreamingLogs] = useState(false);
   const [comfyReady, setComfyReady] = useState(false);
   const [comfyPort, setComfyPort] = useState<number | null>(null);
+  const [preloadScript, setPreloadScript] = useState<string>('');
+
   const updateProgress = useCallback(({ status: newStatus }: ProgressUpdate) => {
     log.info(`Setting new status: ${newStatus}`);
     setStatus(newStatus);
@@ -86,6 +90,10 @@ const Home: React.FC = () => {
       log.info('ComfyUI ready');
       setComfyPort(port);
       setComfyReady(true);
+    });
+
+    electronAPI.getPreloadScript().then((script) => {
+      setPreloadScript(script);
     });
   }, []);
 
@@ -123,7 +131,12 @@ const Home: React.FC = () => {
   if (comfyReady && comfyPort) {
     return (
       <div style={iframeContainerStyle}>
-        <iframe id="comfy-container" style={iframeStyle} src={`http://localhost:${comfyPort}`}></iframe>
+        <webview
+          id="comfy-container"
+          src={`http://localhost:${comfyPort}`}
+          style={iframeStyle}
+          preload={`file://${preloadScript}`}
+        />
         {showStreamingLogs && (
           <div style={logContainerStyle}>
             <LogViewer onClose={() => setShowStreamingLogs(false)} />

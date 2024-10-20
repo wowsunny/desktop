@@ -261,7 +261,7 @@ async function loadRendererIntoMainWindow(): Promise<void> {
     log.info('Loading Vite Dev Server');
     await mainWindow.loadURL(MAIN_WINDOW_VITE_DEV_SERVER_URL);
     log.info('Opened Vite Dev Server');
-    mainWindow.webContents.openDevTools();
+    //mainWindow.webContents.openDevTools();
   } else {
     mainWindow.loadFile(path.join(__dirname, `../renderer/${MAIN_WINDOW_VITE_NAME}/index.html`));
   }
@@ -333,6 +333,7 @@ export const createWindow = async (userResourcesPath?: string): Promise<BrowserW
       preload: path.join(__dirname, 'preload.js'),
       nodeIntegration: true,
       contextIsolation: true,
+      webviewTag: true,
     },
     autoHideMenuBar: true,
   });
@@ -340,6 +341,7 @@ export const createWindow = async (userResourcesPath?: string): Promise<BrowserW
   mainWindow.webContents.on('did-finish-load', () => {
     mainWindow.webContents.send(IPC_CHANNELS.DEFAULT_INSTALL_LOCATION, app.getPath('documents'));
   });
+  ipcMain.handle(IPC_CHANNELS.GET_PRELOAD_SCRIPT, () => path.join(__dirname, 'preload.js'));
   await loadRendererIntoMainWindow();
   log.info('Renderer loaded into main window');
 
@@ -546,7 +548,7 @@ const spawnPython = (
   cwd: string,
   options = { stdx: true, logFile: '' }
 ) => {
-  log.info(`Spawning python process with command: ${cmd.join(' ')} in directory: ${cwd}`);
+  log.info(`Spawning python process ${pythonInterpreterPath} with command: ${cmd.join(' ')} in directory: ${cwd}`);
   const pythonProcess: ChildProcess = spawn(pythonInterpreterPath, cmd, {
     cwd,
   });

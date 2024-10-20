@@ -2,7 +2,6 @@
 
 import { contextBridge, ipcRenderer } from 'electron';
 import { IPC_CHANNELS, ELECTRON_BRIDGE_API } from './constants';
-import log from 'electron-log/main';
 
 export interface ElectronAPI {
   /**
@@ -27,19 +26,20 @@ export interface ElectronAPI {
   isPackaged: () => Promise<boolean>;
   openDialog: (options: Electron.OpenDialogOptions) => Promise<string[] | undefined>;
   getComfyUIUrl: () => Promise<string>;
+  getPreloadScript: () => Promise<string>;
   getLogs: () => Promise<string[]>;
 }
 
 const electronAPI: ElectronAPI = {
   onProgressUpdate: (callback: (update: { status: string }) => void) => {
     ipcRenderer.on(IPC_CHANNELS.LOADING_PROGRESS, (_event, value) => {
-      log.info(`Received ${IPC_CHANNELS.LOADING_PROGRESS} event`, value);
+      console.info(`Received ${IPC_CHANNELS.LOADING_PROGRESS} event`, value);
       callback(value);
     });
   },
   onLogMessage: (callback: (message: string) => void) => {
     ipcRenderer.on(IPC_CHANNELS.LOG_MESSAGE, (_event, value) => {
-      log.info(`Received ${IPC_CHANNELS.LOG_MESSAGE} event`, value);
+      console.info(`Received ${IPC_CHANNELS.LOG_MESSAGE} event`, value);
       callback(value);
     });
   },
@@ -47,14 +47,14 @@ const electronAPI: ElectronAPI = {
     ipcRenderer.on(IPC_CHANNELS.COMFYUI_READY, (_event, port: number) => callback(port));
   },
   sendReady: () => {
-    log.info('Sending ready event to main process');
+    console.log('Sending ready event to main process');
     ipcRenderer.send(IPC_CHANNELS.RENDERER_READY);
   },
   isPackaged: () => {
     return ipcRenderer.invoke(IPC_CHANNELS.IS_PACKAGED);
   }, //Emulates app.ispackaged in renderer
   restartApp: (): void => {
-    log.info('Sending restarting app message to main process');
+    console.log('Sending restarting app message to main process');
     ipcRenderer.send(IPC_CHANNELS.RESTART_APP);
   },
   onToggleLogsView: (callback: () => void) => {
@@ -72,6 +72,9 @@ const electronAPI: ElectronAPI = {
   getComfyUIUrl: (): Promise<string> => {
     return ipcRenderer.invoke(IPC_CHANNELS.GET_COMFYUI_URL);
   },
+  getPreloadScript: (): Promise<string> => {
+    return ipcRenderer.invoke(IPC_CHANNELS.GET_PRELOAD_SCRIPT);
+  },
   openDialog: (options: Electron.OpenDialogOptions) => {
     return ipcRenderer.invoke(IPC_CHANNELS.OPEN_DIALOG, options);
   },
@@ -80,7 +83,7 @@ const electronAPI: ElectronAPI = {
   },
   onDefaultInstallLocation: (callback: (location: string) => void) => {
     ipcRenderer.on(IPC_CHANNELS.DEFAULT_INSTALL_LOCATION, (_event, value) => {
-      log.info(`Received ${IPC_CHANNELS.DEFAULT_INSTALL_LOCATION} event`, value);
+      console.log(`Received ${IPC_CHANNELS.DEFAULT_INSTALL_LOCATION} event`, value);
       callback(value);
     });
   },

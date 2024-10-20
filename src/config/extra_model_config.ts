@@ -44,6 +44,7 @@ const commonPaths = {
   blip: 'models/blip/',
   CogVideo: 'models/CogVideo/',
   xlabs: 'models/xlabs/',
+  instantid: 'models/instantid/',
   // End custom node model directories.
   custom_nodes: 'custom_nodes/',
 };
