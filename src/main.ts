@@ -15,13 +15,13 @@ import { app, BrowserWindow, dialog, screen, ipcMain, Menu, MenuItem, globalShor
 import log from 'electron-log/main';
 import * as Sentry from '@sentry/electron/main';
 import Store from 'electron-store';
-import { updateElectronApp, UpdateSourceType } from 'update-electron-app';
 import * as net from 'net';
 import { graphics } from 'systeminformation';
 import { createModelConfigFiles, readBasePathFromConfig } from './config/extra_model_config';
 import { WebSocketServer } from 'ws';
 import { StoreType } from './store';
 import { createReadStream, watchFile } from 'node:fs';
+import todesktop from '@todesktop/runtime';
 import { PythonEnvironment } from './pythonEnvironment';
 
 let comfyServerProcess: ChildProcess | null = null;
@@ -33,6 +33,11 @@ let store: Store<StoreType> | null;
 const messageQueue: Array<any> = []; // Stores mesaages before renderer is ready.
 
 log.initialize();
+
+todesktop.init({
+  customLogger: log,
+  updateReadyAction: { showInstallAndRestartPrompt: 'always', showNotification: 'always' },
+});
 
 // Register the quit handlers regardless of single instance lock and before squirrel startup events.
 // Quit when all windows are closed, except on macOS. There, it's common
@@ -66,15 +71,6 @@ app.on('quit', () => {
   log.info('Quitting ComfyUI');
   app.exit();
 });
-
-// Handle creating/removing shortcuts on Windows when installing/uninstalling.
-// Run this as early in the main process as possible.
-if (require('electron-squirrel-startup')) {
-  log.info('App already being set up by squirrel. Exiting...');
-  app.quit();
-} else {
-  log.info('Normal startup');
-}
 
 const gotTheLock = app.requestSingleInstanceLock();
 
@@ -206,7 +202,7 @@ if (!gotTheLock) {
       await pythonEnvironment.setup();
 
       sendProgressUpdate('Starting Comfy Server...');
-      await launchPythonServer(pythonEnvironment.pythonInterpreterPath, appResourcesPath, modelConfigPath, basePath);
+      await launchPythonServer(pythonInterpreterPath, appResourcesPath, modelConfigPath, basePath);
       updateElectronApp({
         updateSource: {
           type: UpdateSourceType.StaticStorage,
@@ -259,13 +255,13 @@ async function loadRendererIntoMainWindow(): Promise<void> {
     log.error('Trying to load renderer into main window but it is not ready yet.');
     return;
   }
-  if (MAIN_WINDOW_VITE_DEV_SERVER_URL) {
+  if (typeof MAIN_WINDOW_VITE_DEV_SERVER_URL !== 'undefined') {
     log.info('Loading Vite Dev Server');
     await mainWindow.loadURL(MAIN_WINDOW_VITE_DEV_SERVER_URL);
     log.info('Opened Vite Dev Server');
     //mainWindow.webContents.openDevTools();
   } else {
-    mainWindow.loadFile(path.join(__dirname, `../renderer/${MAIN_WINDOW_VITE_NAME}/index.html`));
+    mainWindow.loadFile(path.join(__dirname, `../renderer/index.html`));
   }
 }
 
