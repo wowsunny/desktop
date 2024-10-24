@@ -41,7 +41,7 @@ export class PythonEnvironment {
       process.platform === 'win32'
         ? path.join(this.pythonRootPath, 'python.exe')
         : path.join(this.pythonRootPath, 'bin', 'python');
-    this.pythonRecordPath = path.join(this.pythonInterpreterPath, 'INSTALLER');
+    this.pythonRecordPath = path.join(this.pythonRootPath, 'INSTALLER');
     this.pythonTarPath = path.join(appResourcesPath, 'python.tgz');
     this.wheelsPath = path.join(this.pythonRootPath, 'wheels');
     this.requirementsCompiledPath = path.join(this.pythonRootPath, 'requirements.compiled');
