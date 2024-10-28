@@ -11,7 +11,7 @@ import {
   IPCChannel,
   SENTRY_URL_ENDPOINT,
 } from './constants';
-import { app, BrowserWindow, dialog, screen, ipcMain, Menu, MenuItem, globalShortcut } from 'electron';
+import { app, BrowserWindow, dialog, screen, ipcMain, Menu, MenuItem, globalShortcut, shell } from 'electron';
 import log from 'electron-log/main';
 import * as Sentry from '@sentry/electron/main';
 import Store from 'electron-store';
@@ -174,6 +174,9 @@ if (!gotTheLock) {
           ...options,
         });
       });
+      ipcMain.on(IPC_CHANNELS.OPEN_LOGS_FOLDER, () => {
+        shell.openPath(app.getPath('logs'));
+      });
       ipcMain.handle(IPC_CHANNELS.IS_PACKAGED, () => {
         return app.isPackaged;
       });
@@ -188,6 +191,8 @@ if (!gotTheLock) {
       sendProgressUpdate('Setting up Python Environment...');
       const pythonEnvironment = new PythonEnvironment(pythonInstallPath, appResourcesPath, spawnPythonAsync);
       await pythonEnvironment.setup();
+
+      installElectronAdapter(appResourcesPath);
       SetupTray(
         mainWindow,
         basePath,
@@ -200,7 +205,7 @@ if (!gotTheLock) {
         () => {
           mainWindow.webContents.send(IPC_CHANNELS.TOGGLE_LOGS);
         },
-        pythonEnvironment.pythonInterpreterPath
+        pythonEnvironment
       );
       sendProgressUpdate('Starting Comfy Server...');
       await launchPythonServer(pythonEnvironment.pythonInterpreterPath, appResourcesPath, modelConfigPath, basePath);
@@ -908,3 +913,33 @@ const rotateLogFiles = (logDir: string, baseName: string) => {
     fs.renameSync(currentLogPath, newLogPath);
   }
 };
+
+/**
+ * Install the Electron adapter into the ComfyUI custom_nodes directory.
+ * @param appResourcesPath The path to the app resources.
+ */
+function installElectronAdapter(appResourcesPath: string) {
+  const electronAdapterPath = path.join(appResourcesPath, 'ComfyUI_electron_adapter');
+  const comfyUIPath = path.join(appResourcesPath, 'ComfyUI');
+  const customNodesPath = path.join(comfyUIPath, 'custom_nodes');
+  const adapterDestPath = path.join(customNodesPath, 'ComfyUI_electron_adapter');
+
+  try {
+    // Ensure the custom_nodes directory exists
+    if (!fs.existsSync(customNodesPath)) {
+      fs.mkdirSync(customNodesPath, { recursive: true });
+    }
+
+    // Remove existing adapter folder if it exists
+    if (fs.existsSync(adapterDestPath)) {
+      fs.rmSync(adapterDestPath, { recursive: true, force: true });
+    }
+
+    // Copy the adapter folder
+    fs.cpSync(electronAdapterPath, adapterDestPath, { recursive: true });
+
+    log.info('Electron adapter installed successfully');
+  } catch (error) {
+    log.error('Failed to install Electron adapter:', error);
+  }
+}
