@@ -1,7 +1,8 @@
 // preload.ts
 
-import { contextBridge, ipcRenderer } from 'electron';
+import { contextBridge, DownloadItem, ipcRenderer } from 'electron';
 import { IPC_CHANNELS, ELECTRON_BRIDGE_API } from './constants';
+import { DownloadStatus } from './models/DownloadManager';
 
 export interface ElectronAPI {
   /**
@@ -33,6 +34,22 @@ export interface ElectronAPI {
    * Open the logs folder in the system's default file explorer.
    */
   openLogsFolder: () => void;
+  DownloadManager: {
+    onDownloadProgress: (
+      callback: (progress: {
+        url: string;
+        progress_percentage: number;
+        status: DownloadStatus;
+        message?: string;
+      }) => void
+    ) => void;
+    startDownload: (url: string, path: string, filename: string) => Promise<boolean>;
+    cancelDownload: (url: string) => Promise<boolean>;
+    pauseDownload: (url: string) => Promise<boolean>;
+    resumeDownload: (url: string) => Promise<boolean>;
+    deleteModel: (filename: string, path: string) => Promise<boolean>;
+    getAllDownloads: () => Promise<DownloadItem[]>;
+  };
 }
 
 const electronAPI: ElectronAPI = {
@@ -97,6 +114,37 @@ const electronAPI: ElectronAPI = {
   },
   openLogsFolder: () => {
     ipcRenderer.send(IPC_CHANNELS.OPEN_LOGS_FOLDER);
+  },
+  DownloadManager: {
+    onDownloadProgress: (
+      callback: (progress: {
+        url: string;
+        progress_percentage: number;
+        status: DownloadStatus;
+        message?: string;
+      }) => void
+    ) => {
+      ipcRenderer.on(IPC_CHANNELS.DOWNLOAD_PROGRESS, (_event, progress) => callback(progress));
+    },
+    startDownload: (url: string, path: string, filename: string): Promise<boolean> => {
+      console.log(`Sending start download message to main process`, { url, path, filename });
+      return ipcRenderer.invoke(IPC_CHANNELS.START_DOWNLOAD, { url, path, filename });
+    },
+    cancelDownload: (url: string): Promise<boolean> => {
+      return ipcRenderer.invoke(IPC_CHANNELS.CANCEL_DOWNLOAD, url);
+    },
+    pauseDownload: (url: string): Promise<boolean> => {
+      return ipcRenderer.invoke(IPC_CHANNELS.PAUSE_DOWNLOAD, url);
+    },
+    resumeDownload: (url: string): Promise<boolean> => {
+      return ipcRenderer.invoke(IPC_CHANNELS.RESUME_DOWNLOAD, url);
+    },
+    deleteModel: (filename: string, path: string): Promise<boolean> => {
+      return ipcRenderer.invoke(IPC_CHANNELS.DELETE_DOWNLOAD, { filename, path });
+    },
+    getAllDownloads: (): Promise<DownloadItem[]> => {
+      return ipcRenderer.invoke(IPC_CHANNELS.GET_ALL_DOWNLOADS);
+    },
   },
 };
 
