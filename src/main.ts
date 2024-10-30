@@ -29,9 +29,9 @@ import { getModelsDirectory } from './utils';
 let comfyServerProcess: ChildProcess | null = null;
 const host = '127.0.0.1';
 let port = 8188;
-let mainWindow: BrowserWindow | null;
+let mainWindow: BrowserWindow | null = null;
 let wss: WebSocketServer | null;
-let store: Store<StoreType> | null;
+let store: Store<StoreType> | null = null;
 const messageQueue: Array<any> = []; // Stores mesaages before renderer is ready.
 let downloadManager: DownloadManager;
 
@@ -145,6 +145,10 @@ if (!gotTheLock) {
 
   app.on('ready', async () => {
     log.info('App ready');
+    if (!mainWindow) {
+      log.error('ERROR: Main window not found!');
+      return;
+    }
 
     app.on('activate', async () => {
       // On OS X it's common to re-create a window in the app when the
@@ -168,7 +172,9 @@ if (!gotTheLock) {
         while (messageQueue.length > 0) {
           const message = messageQueue.shift();
           log.info('Sending queued message ', message.channel);
-          mainWindow.webContents.send(message.channel, message.data);
+          if (mainWindow) {
+            mainWindow.webContents.send(message.channel, message.data);
+          }
         }
       });
       ipcMain.handle(IPC_CHANNELS.OPEN_DIALOG, (event, options: Electron.OpenDialogOptions) => {
@@ -185,7 +191,11 @@ if (!gotTheLock) {
       });
       await handleFirstTimeSetup();
       const { appResourcesPath, pythonInstallPath, modelConfigPath, basePath } = await determineResourcesPaths();
-      downloadManager = DownloadManager.getInstance(mainWindow, getModelsDirectory(basePath));
+      if (!basePath) {
+        log.error('ERROR: Base path not found!');
+        return;
+      }
+      downloadManager = DownloadManager.getInstance(mainWindow!, getModelsDirectory(basePath));
       port = await findAvailablePort(8000, 9999).catch((err) => {
         log.error(`ERROR: Failed to find available port: ${err}`);
         throw err;
@@ -206,7 +216,9 @@ if (!gotTheLock) {
           restartApp();
         },
         () => {
-          mainWindow.webContents.send(IPC_CHANNELS.TOGGLE_LOGS);
+          if (mainWindow) {
+            mainWindow.webContents.send(IPC_CHANNELS.TOGGLE_LOGS);
+          }
         },
         pythonEnvironment
       );
@@ -313,10 +325,10 @@ export const createWindow = async (userResourcesPath?: string): Promise<BrowserW
   const { width, height } = primaryDisplay.workAreaSize;
 
   // Retrieve stored window size, or use default if not available
-  const storedWidth = store.get('windowWidth', width);
-  const storedHeight = store.get('windowHeight', height);
-  const storedX = store.get('windowX');
-  const storedY = store.get('windowY');
+  const storedWidth = store?.get('windowWidth', width) ?? width;
+  const storedHeight = store?.get('windowHeight', height) ?? height;
+  const storedX = store?.get('windowX');
+  const storedY = store?.get('windowY');
 
   if (mainWindow) {
     log.info('Main window already exists');
@@ -339,13 +351,17 @@ export const createWindow = async (userResourcesPath?: string): Promise<BrowserW
   });
   log.info('Loading renderer into main window');
   mainWindow.webContents.on('did-finish-load', () => {
-    mainWindow.webContents.send(IPC_CHANNELS.DEFAULT_INSTALL_LOCATION, app.getPath('documents'));
+    if (mainWindow) {
+      mainWindow.webContents.send(IPC_CHANNELS.DEFAULT_INSTALL_LOCATION, app.getPath('documents'));
+    }
   });
   ipcMain.handle(IPC_CHANNELS.GET_PRELOAD_SCRIPT, () => path.join(__dirname, 'preload.js'));
   await loadRendererIntoMainWindow();
   log.info('Renderer loaded into main window');
 
   const updateBounds = () => {
+    if (!mainWindow || !store) return;
+
     const { width, height, x, y } = mainWindow.getBounds();
     store.set('windowWidth', width);
     store.set('windowHeight', height);
@@ -357,7 +373,7 @@ export const createWindow = async (userResourcesPath?: string): Promise<BrowserW
   mainWindow.on('move', updateBounds);
 
   const shortcut = globalShortcut.register('CommandOrControl+Shift+L', () => {
-    mainWindow.webContents.send(IPC_CHANNELS.TOGGLE_LOGS);
+    if (mainWindow) mainWindow.webContents.send(IPC_CHANNELS.TOGGLE_LOGS);
   });
 
   if (!shortcut) {
@@ -368,7 +384,7 @@ export const createWindow = async (userResourcesPath?: string): Promise<BrowserW
     // Mac Only Behavior
     if (process.platform === 'darwin') {
       e.preventDefault();
-      mainWindow.hide();
+      if (mainWindow) mainWindow.hide();
       app.dock.hide();
     }
     globalShortcut.unregister('CommandOrControl+Shift+L');
@@ -408,7 +424,7 @@ const isComfyServerReady = async (host: string, port: number): Promise<boolean> 
 // Launch Python Server Variables
 const maxFailWait: number = 120 * 1000; // 120seconds
 let currentWaitTime = 0;
-let spawnServerTimeout: NodeJS.Timeout = null;
+let spawnServerTimeout: NodeJS.Timeout | null = null;
 
 const launchPythonServer = async (
   pythonInterpreterPath: string,
@@ -462,7 +478,9 @@ const launchPythonServer = async (
       currentWaitTime += 1000;
       if (currentWaitTime > maxFailWait) {
         //Something has gone wrong and we need to backout.
-        clearTimeout(spawnServerTimeout);
+        if (spawnServerTimeout) {
+          clearTimeout(spawnServerTimeout);
+        }
         reject('Python Server Failed To Start Within Timeout.');
       }
       const isReady = await isComfyServerReady(host, port);
@@ -472,7 +490,9 @@ const launchPythonServer = async (
 
         //For now just replace the source of the main window to the python server
         setTimeout(() => loadComfyIntoMainWindow(), 1000);
-        clearTimeout(spawnServerTimeout);
+        if (spawnServerTimeout) {
+          clearTimeout(spawnServerTimeout);
+        }
         return resolve();
       } else {
         log.info('Ping failed. Retrying...');
@@ -498,7 +518,8 @@ const sendRendererMessage = (channel: IPCChannel, data: any) => {
     channel: channel,
     data: data,
   };
-  if (!mainWindow.webContents || mainWindow.webContents.isLoading()) {
+
+  if (!mainWindow?.webContents || mainWindow.webContents.isLoading()) {
     log.info('Queueing message since renderer is not ready yet.');
     messageQueue.push(newMessage);
     return;
@@ -507,39 +528,43 @@ const sendRendererMessage = (channel: IPCChannel, data: any) => {
   if (messageQueue.length > 0) {
     while (messageQueue.length > 0) {
       const message = messageQueue.shift();
-      log.info('Sending queued message ', message.channel, message.data);
-      mainWindow.webContents.send(message.channel, message.data);
+      if (message) {
+        log.info('Sending queued message ', message.channel, message.data);
+        mainWindow.webContents.send(message.channel, message.data);
+      }
     }
   }
   mainWindow.webContents.send(newMessage.channel, newMessage.data);
 };
 
 const killPythonServer = async (): Promise<void> => {
-  if (comfyServerProcess) {
+  return new Promise<void>((resolve, reject) => {
+    if (!comfyServerProcess) {
+      resolve();
+      return;
+    }
+
     log.info('Killing ComfyUI python server.');
+    // Set up a timeout in case the process doesn't exit
+    const timeout = setTimeout(() => {
+      reject(new Error('Timeout: Python server did not exit within 10 seconds'));
+    }, 10000);
 
-    return new Promise<void>((resolve, reject) => {
-      // Set up a timeout in case the process doesn't exit
-      const timeout = setTimeout(() => {
-        reject(new Error('Timeout: Python server did not exit within 10 seconds'));
-      }, 10000);
-
-      // Listen for the 'exit' event
-      comfyServerProcess.once('exit', (code, signal) => {
-        clearTimeout(timeout);
-        log.info(`Python server exited with code ${code} and signal ${signal}`);
-        comfyServerProcess = null;
-        resolve();
-      });
-
-      // Attempt to kill the process
-      const result = comfyServerProcess.kill();
-      if (!result) {
-        clearTimeout(timeout);
-        reject(new Error('Failed to initiate kill signal for python server'));
-      }
+    // Listen for the 'exit' event
+    comfyServerProcess.once('exit', (code, signal) => {
+      clearTimeout(timeout);
+      log.info(`Python server exited with code ${code} and signal ${signal}`);
+      comfyServerProcess = null;
+      resolve();
     });
-  }
+
+    // Attempt to kill the process
+    const result = comfyServerProcess.kill();
+    if (!result) {
+      clearTimeout(timeout);
+      reject(new Error('Failed to initiate kill signal for python server'));
+    }
+  });
 };
 
 const spawnPython = (
@@ -564,18 +589,18 @@ const spawnPython = (
       pythonLog = log.create({ logId: options.logFile });
       pythonLog.transports.file.fileName = `${options.logFile}.log`;
       pythonLog.transports.file.resolvePathFn = (variables) => {
-        return path.join(variables.electronDefaultDir, variables.fileName);
+        return path.join(variables.electronDefaultDir ?? '', variables.fileName ?? '');
       };
     }
 
-    pythonProcess.stderr.on('data', (data) => {
+    pythonProcess.stderr?.on?.('data', (data) => {
       const message = data.toString().trim();
       pythonLog.error(`stderr: ${message}`);
       if (mainWindow) {
         sendRendererMessage(IPC_CHANNELS.LOG_MESSAGE, message);
       }
     });
-    pythonProcess.stdout.on('data', (data) => {
+    pythonProcess.stdout?.on?.('data', (data) => {
       const message = data.toString().trim();
       pythonLog.info(`stdout: ${message}`);
       if (mainWindow) {
@@ -603,14 +628,14 @@ const spawnPythonAsync = (
 
     if (options.stdx) {
       log.info('Setting up python process stdout/stderr listeners');
-      pythonProcess.stderr.on('data', (data) => {
+      pythonProcess.stderr?.on?.('data', (data) => {
         const message = data.toString();
         log.error(message);
         if (mainWindow) {
           sendRendererMessage(IPC_CHANNELS.LOG_MESSAGE, message);
         }
       });
-      pythonProcess.stdout.on('data', (data) => {
+      pythonProcess.stdout?.on?.('data', (data) => {
         const message = data.toString();
         log.info(message);
         if (mainWindow) {
@@ -831,28 +856,27 @@ async function determineResourcesPaths(): Promise<{
 }> {
   const modelConfigPath = path.join(app.getPath('userData'), 'extra_models_config.yaml');
   const basePath = await readBasePathFromConfig(modelConfigPath);
+  const appResourcePath = process.resourcesPath;
+  const defaultUserResourcesPath = getDefaultUserResourcesPath();
+
   if (!app.isPackaged) {
     return {
       // development: install python to in-tree assets dir
       userResourcesPath: path.join(app.getAppPath(), 'assets'),
       pythonInstallPath: path.join(app.getAppPath(), 'assets'),
       appResourcesPath: path.join(app.getAppPath(), 'assets'),
-      modelConfigPath: modelConfigPath,
-      basePath: basePath,
+      modelConfigPath,
+      basePath,
     };
   }
-
-  const defaultUserResourcesPath = getDefaultUserResourcesPath();
-
-  const appResourcePath = process.resourcesPath;
 
   // TODO(robinhuang): Look for extra models yaml file and use that as the userResourcesPath if it exists.
   return {
     userResourcesPath: defaultUserResourcesPath,
-    pythonInstallPath: basePath,
+    pythonInstallPath: basePath ?? defaultUserResourcesPath, // Provide fallback
     appResourcesPath: appResourcePath,
-    modelConfigPath: modelConfigPath,
-    basePath: basePath,
+    modelConfigPath,
+    basePath,
   };
 }
 
