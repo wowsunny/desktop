@@ -215,11 +215,6 @@ if (!gotTheLock) {
           fs.rmSync(modelConfigPath);
           restartApp();
         },
-        () => {
-          if (mainWindow) {
-            mainWindow.webContents.send(IPC_CHANNELS.TOGGLE_LOGS);
-          }
-        },
         pythonEnvironment
       );
       sendProgressUpdate('Starting Comfy Server...');
@@ -237,22 +232,7 @@ if (!gotTheLock) {
     ipcMain.handle(IPC_CHANNELS.GET_COMFYUI_URL, () => {
       return `http://${host}:${port}`;
     });
-
-    ipcMain.handle(IPC_CHANNELS.GET_LOGS, async (): Promise<string[]> => {
-      return await readComfyUILogs();
-    });
   });
-}
-
-async function readComfyUILogs(): Promise<string[]> {
-  try {
-    const logContent = await fsPromises.readFile(path.join(app.getPath('logs'), 'comfyui.log'), 'utf-8');
-    const logs = logContent.split('\n');
-    return logs;
-  } catch (error) {
-    console.error('Error reading log file:', error);
-    return [];
-  }
 }
 
 function loadComfyIntoMainWindow() {
@@ -372,14 +352,6 @@ export const createWindow = async (userResourcesPath?: string): Promise<BrowserW
   mainWindow.on('resize', updateBounds);
   mainWindow.on('move', updateBounds);
 
-  const shortcut = globalShortcut.register('CommandOrControl+Shift+L', () => {
-    if (mainWindow) mainWindow.webContents.send(IPC_CHANNELS.TOGGLE_LOGS);
-  });
-
-  if (!shortcut) {
-    log.error('Failed to register global shortcut');
-  }
-
   mainWindow.on('close', (e: Electron.Event) => {
     // Mac Only Behavior
     if (process.platform === 'darwin') {
@@ -387,7 +359,6 @@ export const createWindow = async (userResourcesPath?: string): Promise<BrowserW
       if (mainWindow) mainWindow.hide();
       app.dock.hide();
     }
-    globalShortcut.unregister('CommandOrControl+Shift+L');
     mainWindow = null;
   });
 
