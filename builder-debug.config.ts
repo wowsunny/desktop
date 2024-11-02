@@ -1,8 +1,12 @@
 import { Configuration } from 'electron-builder';
 
 const debugConfig: Configuration = {
-  files: ['package.json', 'README.md', 'src/**', '.vite/**'],
-  extraFiles: [{ from: './assets', to: process.platform === 'darwin' ? './Resources' : './resources' }],
+  files: ['node_modules', 'package.json', '.vite/**'],
+  extraResources: [
+    { from: './assets/ComfyUI', to: 'ComfyUI' },
+    { from: './assets/python.tgz', to: 'python.tgz' },
+    { from: './assets/UI', to: 'UI' },
+  ],
   beforeBuild: './scripts/preMake.js',
   win: {
     icon: './assets/UI/Comfy_Logo.ico',
