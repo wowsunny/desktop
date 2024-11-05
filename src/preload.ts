@@ -45,6 +45,16 @@ export interface ElectronAPI {
     deleteModel: (filename: string, path: string) => Promise<boolean>;
     getAllDownloads: () => Promise<DownloadItem[]>;
   };
+  /**
+   * Get the current Electron version
+   */
+  getElectronVersion: () => Promise<string>;
+  /**
+   * Send an error message to Sentry
+   * @param error The error object or message to send
+   * @param extras Optional additional context/data to attach
+   */
+  sendErrorToSentry: (error: string, extras?: Record<string, any>) => Promise<void>;
 }
 
 const electronAPI: ElectronAPI = {
@@ -125,6 +135,15 @@ const electronAPI: ElectronAPI = {
     getAllDownloads: (): Promise<DownloadItem[]> => {
       return ipcRenderer.invoke(IPC_CHANNELS.GET_ALL_DOWNLOADS);
     },
+  },
+  getElectronVersion: () => {
+    return ipcRenderer.invoke(IPC_CHANNELS.GET_ELECTRON_VERSION);
+  },
+  sendErrorToSentry: (error: string, extras?: Record<string, any>) => {
+    return ipcRenderer.invoke(IPC_CHANNELS.SEND_ERROR_TO_SENTRY, {
+      error: error,
+      extras,
+    });
   },
 };
 

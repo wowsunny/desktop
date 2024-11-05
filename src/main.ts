@@ -1,5 +1,4 @@
 import { spawn, ChildProcess } from 'node:child_process';
-import * as fsPromises from 'node:fs/promises';
 import fs from 'fs';
 import axios from 'axios';
 import path from 'node:path';
@@ -33,7 +32,7 @@ let mainWindow: BrowserWindow | null = null;
 let store: Store<StoreType> | null = null;
 const messageQueue: Array<any> = []; // Stores mesaages before renderer is ready.
 let downloadManager: DownloadManager;
-
+Sentry.captureMessage('Hello, world!');
 log.initialize();
 
 const comfySettings = new ComfySettings(app.getPath('documents'));
@@ -91,18 +90,24 @@ if (!gotTheLock) {
     }
   });
 
-  app.isPackaged &&
-    comfySettings.sendCrashStatistics &&
-    Sentry.init({
-      dsn: SENTRY_URL_ENDPOINT,
-      autoSessionTracking: false,
-      integrations: [
-        Sentry.childProcessIntegration({
-          breadcrumbs: ['abnormal-exit', 'killed', 'crashed', 'launch-failed', 'oom', 'integrity-failure'],
-          events: ['abnormal-exit', 'killed', 'crashed', 'launch-failed', 'oom', 'integrity-failure'],
-        }),
-      ],
-    });
+  Sentry.init({
+    dsn: SENTRY_URL_ENDPOINT,
+    autoSessionTracking: false,
+    beforeSend(event, hint) {
+      if (event.extra?.comfyUIExecutionError) {
+        return event;
+      }
+
+      //TODO (use default pop up behavior).
+      return event;
+    },
+    integrations: [
+      Sentry.childProcessIntegration({
+        breadcrumbs: ['abnormal-exit', 'killed', 'crashed', 'launch-failed', 'oom', 'integrity-failure'],
+        events: ['abnormal-exit', 'killed', 'crashed', 'launch-failed', 'oom', 'integrity-failure'],
+      }),
+    ],
+  });
 
   graphics()
     .then((graphicsInfo) => {
@@ -191,7 +196,6 @@ if (!gotTheLock) {
       sendProgressUpdate('Setting up Python Environment...');
       const pythonEnvironment = new PythonEnvironment(pythonInstallPath, appResourcesPath, spawnPythonAsync);
       await pythonEnvironment.setup();
-
       SetupTray(
         mainWindow,
         basePath,
@@ -221,6 +225,22 @@ if (!gotTheLock) {
         }
       }
     );
+
+    ipcMain.handle(IPC_CHANNELS.GET_ELECTRON_VERSION, () => {
+      return app.getVersion();
+    });
+
+    ipcMain.handle(IPC_CHANNELS.SEND_ERROR_TO_SENTRY, async (_event, { error, extras }): Promise<string | null> => {
+      try {
+        return Sentry.captureMessage(error, {
+          level: 'error',
+          extra: { ...extras, comfyUIExecutionError: true },
+        });
+      } catch (err) {
+        log.error('Failed to send error to Sentry:', err);
+        return null;
+      }
+    });
   });
 }
 
