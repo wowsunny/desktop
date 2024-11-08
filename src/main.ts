@@ -3,15 +3,13 @@ import fs from 'fs';
 import axios from 'axios';
 import path from 'node:path';
 import { SetupTray } from './tray';
-import { IPC_CHANNELS, IPCChannel, SENTRY_URL_ENDPOINT, ProgressStatus } from './constants';
-import { app, BrowserWindow, dialog, screen, ipcMain, shell } from 'electron';
+import { IPC_CHANNELS, SENTRY_URL_ENDPOINT, ProgressStatus } from './constants';
+import { app, BrowserWindow, dialog, ipcMain, shell } from 'electron';
 import log from 'electron-log/main';
 import * as Sentry from '@sentry/electron/main';
-import Store from 'electron-store';
 import * as net from 'net';
 import { graphics } from 'systeminformation';
 import { createModelConfigFiles, getModelConfigPath, readBasePathFromConfig } from './config/extra_model_config';
-import { StoreType } from './store';
 import todesktop from '@todesktop/runtime';
 import { PythonEnvironment } from './pythonEnvironment';
 import { DownloadManager } from './models/DownloadManager';
@@ -20,6 +18,7 @@ import { ComfySettings } from './config/comfySettings';
 import dotenv from 'dotenv';
 import { buildMenu } from './menu/menu';
 import { ComfyConfigManager } from './config/comfyConfigManager';
+import { AppWindow } from './main-process/appWindow';
 
 dotenv.config();
 
@@ -37,11 +36,9 @@ let port = parseInt(process.env.COMFY_PORT || '-1');
  */
 const useExternalServer = process.env.USE_EXTERNAL_SERVER === 'true';
 
-let mainWindow: BrowserWindow | null = null;
-let store: Store<StoreType> | null = null;
-const messageQueue: Array<any> = []; // Stores mesaages before renderer is ready.
+let appWindow: AppWindow;
 let downloadManager: DownloadManager;
-Sentry.captureMessage('Hello, world!');
+
 log.initialize();
 
 const comfySettings = new ComfySettings(app.getPath('documents'));
@@ -88,14 +85,13 @@ if (!gotTheLock) {
   log.info('App already running. Exiting...');
   app.quit();
 } else {
-  store = new Store<StoreType>();
   app.on('second-instance', (event, commandLine, workingDirectory, additionalData) => {
     log.info('Received second instance message!');
     log.info(additionalData);
 
-    if (mainWindow) {
-      if (mainWindow.isMinimized()) mainWindow.restore();
-      mainWindow.focus();
+    if (appWindow) {
+      if (appWindow.isMinimized()) appWindow.restore();
+      appWindow.focus();
     }
   });
 
@@ -150,42 +146,9 @@ if (!gotTheLock) {
   app.on('ready', async () => {
     log.info('App ready');
 
-    app.on('activate', async () => {
-      // On OS X it's common to re-create a window in the app when the
-      // dock icon is clicked and there are no other windows open.
-      if (BrowserWindow.getAllWindows().length === 0) {
-        createWindow();
-      }
-    });
-
     try {
-      await createWindow();
-      if (!mainWindow) {
-        log.error('ERROR: Main window not found!');
-        return;
-      }
+      createWindow();
 
-      mainWindow.on('close', () => {
-        mainWindow = null;
-        app.quit();
-      });
-
-      mainWindow.webContents.setWindowOpenHandler(({ url }) => {
-        shell.openExternal(url);
-        return { action: 'deny' };
-      });
-
-      ipcMain.on(IPC_CHANNELS.RENDERER_READY, () => {
-        log.info('Received renderer-ready message!');
-        // Send all queued messages
-        while (messageQueue.length > 0) {
-          const message = messageQueue.shift();
-          log.info('Sending queued message ', message.channel);
-          if (mainWindow) {
-            mainWindow.webContents.send(message.channel, message.data);
-          }
-        }
-      });
       ipcMain.handle(IPC_CHANNELS.OPEN_FORUM, () => {
         shell.openExternal('https://forum.comfy.org');
       });
@@ -210,7 +173,7 @@ if (!gotTheLock) {
         shell.openPath(folderPath);
       });
       ipcMain.on(IPC_CHANNELS.OPEN_DEV_TOOLS, () => {
-        mainWindow?.webContents.openDevTools();
+        appWindow.openDevTools();
       });
       ipcMain.handle(IPC_CHANNELS.IS_PACKAGED, () => {
         return app.isPackaged;
@@ -222,8 +185,7 @@ if (!gotTheLock) {
         sendProgressUpdate(ProgressStatus.ERROR_INSTALL_PATH);
         return;
       }
-      downloadManager = DownloadManager.getInstance(mainWindow!, getModelsDirectory(basePath));
-      downloadManager.registerIpcHandlers();
+      downloadManager = DownloadManager.getInstance(appWindow!, getModelsDirectory(basePath));
 
       port =
         port !== -1
@@ -240,7 +202,7 @@ if (!gotTheLock) {
 
         // TODO: Make tray setup more flexible here as not all actions depend on the python environment.
         SetupTray(
-          mainWindow,
+          appWindow,
           () => {
             log.info('Resetting install location');
             fs.rmSync(modelConfigPath);
@@ -290,29 +252,8 @@ if (!gotTheLock) {
 }
 
 function loadComfyIntoMainWindow() {
-  if (!mainWindow) {
-    log.error('Trying to load ComfyUI into main window but it is not ready yet.');
-    return;
-  }
-  mainWindow.loadURL(`http://${host}:${port}`);
+  appWindow.loadURL(`http://${host}:${port}`);
 }
-
-async function loadRendererIntoMainWindow(): Promise<void> {
-  if (!mainWindow) {
-    log.error('Trying to load renderer into main window but it is not ready yet.');
-    return;
-  }
-
-  if (process.env.VITE_DEV_SERVER_URL) {
-    log.info('Loading Vite Dev Server');
-    await mainWindow.loadURL(process.env.VITE_DEV_SERVER_URL);
-    log.info('Opened Vite Dev Server');
-    mainWindow.webContents.openDevTools();
-  } else {
-    mainWindow.loadFile(path.join(__dirname, `../renderer/index.html`));
-  }
-}
-
 function restartApp({ customMessage, delay }: { customMessage?: string; delay?: number } = {}): void {
   function relaunchApplication(delay?: number) {
     isRestarting = true;
@@ -360,73 +301,11 @@ function restartApp({ customMessage, delay }: { customMessage?: string; delay?: 
 }
 
 /**
- * Creates the main window. If the window already exists, it will return the existing window.
- * @param userResourcesPath The path to the user's resources.
- * @returns The main window.
+ * Creates the main application window.
  */
-export const createWindow = async (): Promise<BrowserWindow> => {
-  const primaryDisplay = screen.getPrimaryDisplay();
-  const { width, height } = primaryDisplay.workAreaSize;
-
-  // Retrieve stored window size, or use default if not available
-  const storedWidth = store?.get('windowWidth', width) ?? width;
-  const storedHeight = store?.get('windowHeight', height) ?? height;
-  const storedX = store?.get('windowX');
-  const storedY = store?.get('windowY');
-
-  if (mainWindow) {
-    log.info('Main window already exists');
-    return mainWindow;
-  }
-  mainWindow = new BrowserWindow({
-    title: 'ComfyUI',
-    width: storedWidth,
-    height: storedHeight,
-    x: storedX,
-    y: storedY,
-    webPreferences: {
-      preload: path.join(__dirname, 'preload.js'),
-      nodeIntegration: true,
-      contextIsolation: true,
-      webviewTag: true,
-      devTools: true,
-    },
-    autoHideMenuBar: true,
-  });
-
-  log.info('Loading renderer into main window');
-
-  ipcMain.handle(IPC_CHANNELS.DEFAULT_INSTALL_LOCATION, () => app.getPath('documents'));
-
-  await loadRendererIntoMainWindow();
-  log.info('Renderer loaded into main window');
-
-  const updateBounds = () => {
-    if (!mainWindow || !store) return;
-
-    const { width, height, x, y } = mainWindow.getBounds();
-    store.set('windowWidth', width);
-    store.set('windowHeight', height);
-    store.set('windowX', x);
-    store.set('windowY', y);
-  };
-
-  mainWindow.on('resize', updateBounds);
-  mainWindow.on('move', updateBounds);
-
-  mainWindow.on('close', (e: Electron.Event) => {
-    // Mac Only Behavior
-    if (process.platform === 'darwin') {
-      e.preventDefault();
-      if (mainWindow) mainWindow.hide();
-      app.dock.hide();
-    }
-    mainWindow = null;
-  });
-
+export const createWindow = (): void => {
+  appWindow = new AppWindow();
   buildMenu();
-
-  return mainWindow;
 };
 
 const isComfyServerReady = async (host: string, port: number): Promise<boolean> => {
@@ -538,37 +417,11 @@ const launchPythonServer = async (
 };
 
 function sendProgressUpdate(status: ProgressStatus): void {
-  if (mainWindow) {
-    log.info('Sending progress update to renderer ' + status);
-    sendRendererMessage(IPC_CHANNELS.LOADING_PROGRESS, {
-      status,
-    });
-  }
+  log.info('Sending progress update to renderer ' + status);
+  appWindow.send(IPC_CHANNELS.LOADING_PROGRESS, {
+    status,
+  });
 }
-
-const sendRendererMessage = (channel: IPCChannel, data: any) => {
-  const newMessage = {
-    channel: channel,
-    data: data,
-  };
-
-  if (!mainWindow?.webContents || mainWindow.webContents.isLoading()) {
-    log.info('Queueing message since renderer is not ready yet.');
-    messageQueue.push(newMessage);
-    return;
-  }
-
-  if (messageQueue.length > 0) {
-    while (messageQueue.length > 0) {
-      const message = messageQueue.shift();
-      if (message) {
-        log.info('Sending queued message ', message.channel, message.data);
-        mainWindow.webContents.send(message.channel, message.data);
-      }
-    }
-  }
-  mainWindow.webContents.send(newMessage.channel, newMessage.data);
-};
 
 const killPythonServer = async (): Promise<void> => {
   return new Promise<void>((resolve, reject) => {
@@ -629,15 +482,15 @@ const spawnPython = (
     pythonProcess.stderr?.on?.('data', (data) => {
       const message = data.toString().trim();
       pythonLog.error(`stderr: ${message}`);
-      if (mainWindow) {
-        sendRendererMessage(IPC_CHANNELS.LOG_MESSAGE, message);
+      if (appWindow) {
+        appWindow.send(IPC_CHANNELS.LOG_MESSAGE, message);
       }
     });
     pythonProcess.stdout?.on?.('data', (data) => {
       const message = data.toString().trim();
       pythonLog.info(`stdout: ${message}`);
-      if (mainWindow) {
-        sendRendererMessage(IPC_CHANNELS.LOG_MESSAGE, message);
+      if (appWindow) {
+        appWindow.send(IPC_CHANNELS.LOG_MESSAGE, message);
       }
     });
   }
@@ -664,15 +517,15 @@ const spawnPythonAsync = (
       pythonProcess.stderr?.on?.('data', (data) => {
         const message = data.toString();
         log.error(message);
-        if (mainWindow) {
-          sendRendererMessage(IPC_CHANNELS.LOG_MESSAGE, message);
+        if (appWindow) {
+          appWindow.send(IPC_CHANNELS.LOG_MESSAGE, message);
         }
       });
       pythonProcess.stdout?.on?.('data', (data) => {
         const message = data.toString();
         log.info(message);
-        if (mainWindow) {
-          sendRendererMessage(IPC_CHANNELS.LOG_MESSAGE, message);
+        if (appWindow) {
+          appWindow.send(IPC_CHANNELS.LOG_MESSAGE, message);
         }
       });
     }
@@ -737,14 +590,14 @@ async function handleFirstTimeSetup() {
   const firstTimeSetup = isFirstTimeSetup();
   log.info('First time setup:', firstTimeSetup);
   if (firstTimeSetup) {
-    sendRendererMessage(IPC_CHANNELS.SHOW_SELECT_DIRECTORY, null);
+    appWindow.send(IPC_CHANNELS.SHOW_SELECT_DIRECTORY, null);
     const selectedDirectory = await selectedInstallDirectory();
     const actualComfyDirectory = ComfyConfigManager.setUpComfyUI(selectedDirectory);
 
     const modelConfigPath = await getModelConfigPath();
     await createModelConfigFiles(modelConfigPath, actualComfyDirectory);
   } else {
-    sendRendererMessage(IPC_CHANNELS.FIRST_TIME_SETUP_COMPLETE, null);
+    appWindow.send(IPC_CHANNELS.FIRST_TIME_SETUP_COMPLETE, null);
   }
 }
 
