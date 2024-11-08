@@ -102,13 +102,18 @@ if (!gotTheLock) {
   Sentry.init({
     dsn: SENTRY_URL_ENDPOINT,
     autoSessionTracking: false,
-    beforeSend(event, hint) {
-      if (event.extra?.comfyUIExecutionError) {
+    async beforeSend(event, hint) {
+      if (event.extra?.comfyUIExecutionError || comfySettings.sendCrashStatistics) {
         return event;
       }
 
-      //TODO (use default pop up behavior).
-      return event;
+      const { response } = await dialog.showMessageBox({
+        title: 'Send Crash Statistics',
+        message: `Would you like to send crash statistics to the team?`,
+        buttons: ['Always send crash reports', 'Do not send crash report'],
+      });
+
+      return response === 0 ? event : null;
     },
     integrations: [
       Sentry.childProcessIntegration({
