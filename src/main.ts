@@ -20,6 +20,8 @@ import { buildMenu } from './menu/menu';
 import { ComfyConfigManager } from './config/comfyConfigManager';
 import { AppWindow } from './main-process/appWindow';
 import { getAppResourcesPath, getBasePath, getPythonInstallPath } from './install/resourcePaths';
+import { PathHandlers } from './handlers/pathHandlers';
+import { AppInfoHandlers } from './handlers/appInfoHandlers';
 
 dotenv.config();
 
@@ -140,45 +142,25 @@ if (!gotTheLock) {
       log.error('Error getting GPU info: ', e);
     });
 
-  // This method will be called when Electron has finished
-  // initialization and is ready to create browser windows.
-  // Some APIs can only be used after this event occurs.
-
   app.on('ready', async () => {
     log.info('App ready');
 
     try {
       createWindow();
+      new PathHandlers().registerHandlers();
+      new AppInfoHandlers().registerHandlers();
 
-      ipcMain.handle(IPC_CHANNELS.OPEN_FORUM, () => {
-        shell.openExternal('https://forum.comfy.org');
-      });
-      ipcMain.handle(IPC_CHANNELS.DEFAULT_INSTALL_LOCATION, () => app.getPath('documents'));
       ipcMain.handle(IPC_CHANNELS.OPEN_DIALOG, (event, options: Electron.OpenDialogOptions) => {
         log.info('Open dialog');
         return dialog.showOpenDialogSync({
           ...options,
         });
       });
-      ipcMain.on(IPC_CHANNELS.OPEN_LOGS_PATH, () => {
-        shell.openPath(app.getPath('logs'));
-      });
-      ipcMain.handle(IPC_CHANNELS.GET_BASE_PATH, async () => {
-        return await getBasePath();
-      });
-      ipcMain.handle(IPC_CHANNELS.GET_MODEL_CONFIG_PATH, () => {
-        return getModelConfigPath();
-      });
-      ipcMain.on(IPC_CHANNELS.OPEN_PATH, (event, folderPath: string) => {
-        log.info(`Opening path: ${folderPath}`);
-        shell.openPath(folderPath);
-      });
+
       ipcMain.on(IPC_CHANNELS.OPEN_DEV_TOOLS, () => {
         appWindow.openDevTools();
       });
-      ipcMain.handle(IPC_CHANNELS.IS_PACKAGED, () => {
-        return app.isPackaged;
-      });
+
       await handleFirstTimeSetup();
       const basePath = await getBasePath();
       const pythonInstallPath = await getPythonInstallPath();
@@ -236,10 +218,6 @@ if (!gotTheLock) {
         }
       }
     );
-
-    ipcMain.handle(IPC_CHANNELS.GET_ELECTRON_VERSION, () => {
-      return app.getVersion();
-    });
 
     ipcMain.handle(IPC_CHANNELS.SEND_ERROR_TO_SENTRY, async (_event, { error, extras }): Promise<string | null> => {
       try {
@@ -583,7 +561,7 @@ function isFirstTimeSetup(): boolean {
 async function selectedInstallDirectory(): Promise<string> {
   return new Promise((resolve, reject) => {
     ipcMain.on(IPC_CHANNELS.SELECTED_DIRECTORY, (_event, value) => {
-      log.info('Directory selected:', value);
+      log.info('User selected to install ComfyUI in:', value);
       resolve(value);
     });
   });
