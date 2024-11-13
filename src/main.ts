@@ -22,6 +22,7 @@ import { AppWindow } from './main-process/appWindow';
 import { getAppResourcesPath, getBasePath, getPythonInstallPath } from './install/resourcePaths';
 import { PathHandlers } from './handlers/pathHandlers';
 import { AppInfoHandlers } from './handlers/appInfoHandlers';
+import { InstallOptions } from './preload';
 
 dotenv.config();
 
@@ -164,35 +165,19 @@ if (!gotTheLock) {
       ipcMain.handle(IPC_CHANNELS.IS_FIRST_TIME_SETUP, () => {
         return isFirstTimeSetup();
       });
-      await handleFirstTimeSetup();
-      const basePath = await getBasePath();
-      const pythonInstallPath = await getPythonInstallPath();
-      if (!basePath || !pythonInstallPath) {
-        log.error('ERROR: Base path not found!');
-        sendProgressUpdate(ProgressStatus.ERROR_INSTALL_PATH);
-        return;
-      }
-      downloadManager = DownloadManager.getInstance(appWindow!, getModelsDirectory(basePath));
+      ipcMain.on(IPC_CHANNELS.INSTALL_COMFYUI, async (event, installOptions: InstallOptions) => {
+        // Non-blocking call. The renderer will navigate to /server-start and show install progress.
+        handleInstall(installOptions);
+        serverStart();
+      });
 
-      port =
-        port !== -1
-          ? port
-          : await findAvailablePort(8000, 9999).catch((err) => {
-              log.error(`ERROR: Failed to find available port: ${err}`);
-              throw err;
-            });
+      // Loading renderer when all handlers are registered to ensure all event listeners are set up.
+      const firstTimeSetup = isFirstTimeSetup();
+      const urlPath = firstTimeSetup ? 'welcome' : 'server-start';
+      await appWindow.loadRenderer(urlPath);
 
-      if (!useExternalServer) {
-        sendProgressUpdate(ProgressStatus.PYTHON_SETUP);
-        const appResourcesPath = await getAppResourcesPath();
-        const pythonEnvironment = new PythonEnvironment(pythonInstallPath, appResourcesPath, spawnPythonAsync);
-        await pythonEnvironment.setup();
-        const modelConfigPath = getModelConfigPath();
-        sendProgressUpdate(ProgressStatus.STARTING_SERVER);
-        await launchPythonServer(pythonEnvironment.pythonInterpreterPath, appResourcesPath, modelConfigPath, basePath);
-      } else {
-        sendProgressUpdate(ProgressStatus.READY);
-        loadComfyIntoMainWindow();
+      if (!firstTimeSetup) {
+        await serverStart();
       }
     } catch (error) {
       log.error(error);
@@ -558,27 +543,41 @@ function isFirstTimeSetup(): boolean {
   return !fs.existsSync(extraModelsConfigPath);
 }
 
-async function selectedInstallDirectory(): Promise<string> {
-  return new Promise((resolve, reject) => {
-    ipcMain.on(IPC_CHANNELS.SELECTED_DIRECTORY, (_event, value) => {
-      log.info('User selected to install ComfyUI in:', value);
-      resolve(value);
-    });
-  });
+async function handleInstall(installOptions: InstallOptions) {
+  const actualComfyDirectory = ComfyConfigManager.setUpComfyUI(installOptions.installPath);
+  const modelConfigPath = getModelConfigPath();
+  await createModelConfigFiles(modelConfigPath, actualComfyDirectory);
 }
 
-async function handleFirstTimeSetup() {
-  const firstTimeSetup = isFirstTimeSetup();
-  log.info('First time setup:', firstTimeSetup);
-  if (firstTimeSetup) {
-    appWindow.send(IPC_CHANNELS.SHOW_SELECT_DIRECTORY, null);
-    const selectedDirectory = await selectedInstallDirectory();
-    const actualComfyDirectory = ComfyConfigManager.setUpComfyUI(selectedDirectory);
+async function serverStart() {
+  const basePath = await getBasePath();
+  const pythonInstallPath = await getPythonInstallPath();
+  if (!basePath || !pythonInstallPath) {
+    log.error('ERROR: Base path not found!');
+    sendProgressUpdate(ProgressStatus.ERROR_INSTALL_PATH);
+    return;
+  }
+  downloadManager = DownloadManager.getInstance(appWindow!, getModelsDirectory(basePath));
 
+  port =
+    port !== -1
+      ? port
+      : await findAvailablePort(8000, 9999).catch((err) => {
+          log.error(`ERROR: Failed to find available port: ${err}`);
+          throw err;
+        });
+
+  if (!useExternalServer) {
+    sendProgressUpdate(ProgressStatus.PYTHON_SETUP);
+    const appResourcesPath = await getAppResourcesPath();
+    const pythonEnvironment = new PythonEnvironment(pythonInstallPath, appResourcesPath, spawnPythonAsync);
+    await pythonEnvironment.setup();
     const modelConfigPath = getModelConfigPath();
-    await createModelConfigFiles(modelConfigPath, actualComfyDirectory);
+    sendProgressUpdate(ProgressStatus.STARTING_SERVER);
+    await launchPythonServer(pythonEnvironment.pythonInterpreterPath, appResourcesPath, modelConfigPath, basePath);
   } else {
-    appWindow.send(IPC_CHANNELS.FIRST_TIME_SETUP_COMPLETE, null);
+    sendProgressUpdate(ProgressStatus.READY);
+    loadComfyIntoMainWindow();
   }
 }
 
