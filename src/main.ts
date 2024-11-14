@@ -1,4 +1,4 @@
-import { spawn, ChildProcess } from 'node:child_process';
+import { ChildProcess } from 'node:child_process';
 import fs from 'fs';
 import axios from 'axios';
 import path from 'node:path';
@@ -11,7 +11,6 @@ import * as net from 'net';
 import { graphics } from 'systeminformation';
 import { createModelConfigFiles, getModelConfigPath } from './config/extra_model_config';
 import todesktop from '@todesktop/runtime';
-import { PythonEnvironment } from './pythonEnvironment';
 import { DownloadManager } from './models/DownloadManager';
 import { getModelsDirectory } from './utils';
 import { ComfySettings } from './config/comfySettings';
@@ -23,6 +22,7 @@ import { getAppResourcesPath, getBasePath, getPythonInstallPath } from './instal
 import { PathHandlers } from './handlers/pathHandlers';
 import { AppInfoHandlers } from './handlers/appInfoHandlers';
 import { InstallOptions } from './preload';
+import { VirtualEnvironment } from './virtualEnvironment';
 
 dotenv.config();
 
@@ -305,7 +305,7 @@ let currentWaitTime = 0;
 let spawnServerTimeout: NodeJS.Timeout | null = null;
 
 const launchPythonServer = async (
-  pythonInterpreterPath: string,
+  virtualEnvironment: VirtualEnvironment,
   appResourcesPath: string,
   modelConfigPath: string,
   basePath: string
@@ -316,11 +316,7 @@ const launchPythonServer = async (
     // Server has been started outside the app, so attach to it.
     return loadComfyIntoMainWindow();
   }
-
-  log.info(
-    `Launching Python server with port ${port}. python path: ${pythonInterpreterPath}, app resources path: ${appResourcesPath}, model config path: ${modelConfigPath}, base path: ${basePath}`
-  );
-
+  rotateLogFiles(app.getPath('logs'), 'comfyui');
   return new Promise<void>(async (resolve, reject) => {
     const scriptPath = path.join(appResourcesPath, 'ComfyUI', 'main.py');
     const userDirectoryPath = path.join(basePath, 'user');
@@ -344,10 +340,32 @@ const launchPythonServer = async (
     ];
 
     log.info(`Starting ComfyUI using port ${port}.`);
+    const comfyUILog = log.create({ logId: 'comfyui' });
+    comfyUILog.transports.file.fileName = 'comfyui.log';
+    comfyServerProcess = virtualEnvironment.runPythonCommand(comfyMainCmd, {
+      onStdout: (data) => {
+        comfyUILog.info(data);
+        appWindow.send(IPC_CHANNELS.LOG_MESSAGE, data);
+      },
+      onStderr: (data) => {
+        comfyUILog.error(data);
+        appWindow.send(IPC_CHANNELS.LOG_MESSAGE, data);
+      },
+    });
 
-    comfyServerProcess = spawnPython(pythonInterpreterPath, comfyMainCmd, path.dirname(scriptPath), {
-      logFile: 'comfyui',
-      stdx: true,
+    comfyServerProcess.on('error', (err) => {
+      log.error(`Failed to start ComfyUI: ${err}`);
+      reject(err);
+    });
+
+    comfyServerProcess.on('exit', (code, signal) => {
+      if (code !== 0) {
+        log.error(`Python process exited with code ${code} and signal ${signal}`);
+        reject(new Error(`Python process exited with code ${code} and signal ${signal}`));
+      } else {
+        log.info(`Python process exited successfully with code ${code}`);
+        resolve();
+      }
     });
 
     const checkInterval = 1000; // Check every 1 second
@@ -419,97 +437,6 @@ const killPythonServer = async (): Promise<void> => {
   });
 };
 
-const spawnPython = (
-  pythonInterpreterPath: string,
-  cmd: string[],
-  cwd: string,
-  options = { stdx: true, logFile: '' }
-) => {
-  log.info(`Spawning python process ${pythonInterpreterPath} with command: ${cmd.join(' ')} in directory: ${cwd}`);
-  const pythonProcess: ChildProcess = spawn(pythonInterpreterPath, cmd, {
-    cwd,
-  });
-
-  if (options.stdx) {
-    log.info('Setting up python process stdout/stderr listeners');
-
-    let pythonLog = log;
-    if (options.logFile) {
-      log.info('Creating separate python log file: ', options.logFile);
-      // Rotate log files so each log file is unique to a single python run.
-      rotateLogFiles(app.getPath('logs'), options.logFile);
-      pythonLog = log.create({ logId: options.logFile });
-      pythonLog.transports.file.fileName = `${options.logFile}.log`;
-      pythonLog.transports.file.resolvePathFn = (variables) => {
-        return path.join(variables.electronDefaultDir ?? '', variables.fileName ?? '');
-      };
-    }
-
-    pythonProcess.stderr?.on?.('data', (data) => {
-      const message = data.toString().trim();
-      pythonLog.error(`stderr: ${message}`);
-      if (appWindow) {
-        appWindow.send(IPC_CHANNELS.LOG_MESSAGE, message);
-      }
-    });
-    pythonProcess.stdout?.on?.('data', (data) => {
-      const message = data.toString().trim();
-      pythonLog.info(`stdout: ${message}`);
-      if (appWindow) {
-        appWindow.send(IPC_CHANNELS.LOG_MESSAGE, message);
-      }
-    });
-  }
-
-  return pythonProcess;
-};
-
-const spawnPythonAsync = (
-  pythonInterpreterPath: string,
-  cmd: string[],
-  cwd: string,
-  options = { stdx: true }
-): Promise<{ exitCode: number | null }> => {
-  return new Promise((resolve, reject) => {
-    log.info(`Spawning python process with command: ${pythonInterpreterPath} ${cmd.join(' ')} in directory: ${cwd}`);
-    const pythonProcess: ChildProcess = spawn(pythonInterpreterPath, cmd, { cwd });
-
-    const cleanup = () => {
-      pythonProcess.removeAllListeners();
-    };
-
-    if (options.stdx) {
-      log.info('Setting up python process stdout/stderr listeners');
-      pythonProcess.stderr?.on?.('data', (data) => {
-        const message = data.toString();
-        log.error(message);
-        if (appWindow) {
-          appWindow.send(IPC_CHANNELS.LOG_MESSAGE, message);
-        }
-      });
-      pythonProcess.stdout?.on?.('data', (data) => {
-        const message = data.toString();
-        log.info(message);
-        if (appWindow) {
-          appWindow.send(IPC_CHANNELS.LOG_MESSAGE, message);
-        }
-      });
-    }
-
-    pythonProcess.on('close', (code) => {
-      cleanup();
-      log.info(`Python process exited with code ${code}`);
-      resolve({ exitCode: code });
-    });
-
-    pythonProcess.on('error', (err) => {
-      cleanup();
-      log.error(`Failed to start Python process: ${err}`);
-      reject(err);
-    });
-  });
-};
-
 function findAvailablePort(startPort: number, endPort: number): Promise<number> {
   return new Promise((resolve, reject) => {
     function tryPort(port: number) {
@@ -550,6 +477,7 @@ async function handleInstall(installOptions: InstallOptions) {
 }
 
 async function serverStart() {
+  log.info('Server start');
   const basePath = await getBasePath();
   const pythonInstallPath = await getPythonInstallPath();
   if (!basePath || !pythonInstallPath) {
@@ -570,11 +498,21 @@ async function serverStart() {
   if (!useExternalServer) {
     sendProgressUpdate(ProgressStatus.PYTHON_SETUP);
     const appResourcesPath = await getAppResourcesPath();
-    const pythonEnvironment = new PythonEnvironment(pythonInstallPath, appResourcesPath, spawnPythonAsync);
-    await pythonEnvironment.setup();
+    appWindow.send(IPC_CHANNELS.LOG_MESSAGE, `Creating Python environment...`);
+    const virtualEnvironment = new VirtualEnvironment(basePath);
+    await virtualEnvironment.create({
+      onStdout: (data) => {
+        log.info(data);
+        appWindow.send(IPC_CHANNELS.LOG_MESSAGE, data);
+      },
+      onStderr: (data) => {
+        log.error(data);
+        appWindow.send(IPC_CHANNELS.LOG_MESSAGE, data);
+      },
+    });
     const modelConfigPath = getModelConfigPath();
     sendProgressUpdate(ProgressStatus.STARTING_SERVER);
-    await launchPythonServer(pythonEnvironment.pythonInterpreterPath, appResourcesPath, modelConfigPath, basePath);
+    await launchPythonServer(virtualEnvironment, appResourcesPath, modelConfigPath, basePath);
   } else {
     sendProgressUpdate(ProgressStatus.READY);
     loadComfyIntoMainWindow();
