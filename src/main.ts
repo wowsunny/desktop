@@ -9,7 +9,7 @@ import log from 'electron-log/main';
 import * as Sentry from '@sentry/electron/main';
 import * as net from 'net';
 import { graphics } from 'systeminformation';
-import { createModelConfigFiles, getModelConfigPath } from './config/extra_model_config';
+import { ComfyServerConfig } from './config/comfyServerConfig';
 import todesktop from '@todesktop/runtime';
 import { DownloadManager } from './models/DownloadManager';
 import { getModelsDirectory } from './utils';
@@ -167,8 +167,7 @@ if (!gotTheLock) {
       });
       ipcMain.on(IPC_CHANNELS.INSTALL_COMFYUI, async (event, installOptions: InstallOptions) => {
         // Non-blocking call. The renderer will navigate to /server-start and show install progress.
-        handleInstall(installOptions);
-        serverStart();
+        handleInstall(installOptions).then(serverStart);
       });
 
       // Loading renderer when all handlers are registered to ensure all event listeners are set up.
@@ -198,7 +197,7 @@ if (!gotTheLock) {
 
     ipcMain.handle(IPC_CHANNELS.REINSTALL, async () => {
       log.info('Reinstalling...');
-      const modelConfigPath = getModelConfigPath();
+      const modelConfigPath = ComfyServerConfig.configPath;
       fs.rmSync(modelConfigPath);
       restartApp();
     });
@@ -465,15 +464,23 @@ function findAvailablePort(startPort: number, endPort: number): Promise<number> 
  * This means the extra_models_config.yaml file exists in the user's data directory.
  */
 function isFirstTimeSetup(): boolean {
-  const extraModelsConfigPath = getModelConfigPath();
+  const extraModelsConfigPath = ComfyServerConfig.configPath;
   log.info(`Checking if first time setup is complete. Extra models config path: ${extraModelsConfigPath}`);
   return !fs.existsSync(extraModelsConfigPath);
 }
 
 async function handleInstall(installOptions: InstallOptions) {
+  const migrationSource = installOptions.migrationSourcePath;
+  const migrationItemIds = new Set<string>(installOptions.migrationItemIds ?? []);
+
   const actualComfyDirectory = ComfyConfigManager.setUpComfyUI(installOptions.installPath);
-  const modelConfigPath = getModelConfigPath();
-  await createModelConfigFiles(modelConfigPath, actualComfyDirectory);
+
+  const { comfyui: comfyuiConfig, ...extraConfigs } = await ComfyServerConfig.getMigrationConfig(
+    migrationSource,
+    migrationItemIds
+  );
+  comfyuiConfig['base_path'] = actualComfyDirectory;
+  await ComfyServerConfig.createConfigFile(ComfyServerConfig.configPath, comfyuiConfig, extraConfigs);
 }
 
 async function serverStart() {
@@ -510,9 +517,8 @@ async function serverStart() {
         appWindow.send(IPC_CHANNELS.LOG_MESSAGE, data);
       },
     });
-    const modelConfigPath = getModelConfigPath();
     sendProgressUpdate(ProgressStatus.STARTING_SERVER);
-    await launchPythonServer(virtualEnvironment, appResourcesPath, modelConfigPath, basePath);
+    await launchPythonServer(virtualEnvironment, appResourcesPath, ComfyServerConfig.configPath, basePath);
   } else {
     sendProgressUpdate(ProgressStatus.READY);
     loadComfyIntoMainWindow();
