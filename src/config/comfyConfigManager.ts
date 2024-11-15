@@ -54,18 +54,13 @@ export class ComfyConfigManager {
     'Comfy.Workflow.ShowMissingModelsWarning': true,
   };
 
-  public static setUpComfyUI(localComfyDirectory: string): string {
-    if (!this.isComfyUIDirectory(localComfyDirectory)) {
-      log.info(
-        `Selected directory ${localComfyDirectory} is not a ComfyUI directory. Appending ComfyUI to install path.`
-      );
-      localComfyDirectory = path.join(localComfyDirectory, 'ComfyUI');
+  public static setUpComfyUI(localComfyDirectory: string) {
+    if (fs.existsSync(localComfyDirectory)) {
+      throw new Error(`Selected directory ${localComfyDirectory} already exists`);
     }
-
     this.createComfyDirectories(localComfyDirectory);
     const userSettingsPath = path.join(localComfyDirectory, 'user', 'default');
     this.createComfyConfigFile(userSettingsPath, true);
-    return localComfyDirectory;
   }
 
   public static createComfyConfigFile(userSettingsPath: string, overwrite: boolean = false): void {
