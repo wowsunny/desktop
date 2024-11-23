@@ -147,16 +147,17 @@ export class VirtualEnvironment {
   }
 
   public async installRequirements(callbacks?: ProcessCallbacks): Promise<void> {
-    const installCmd = ['pip', 'install', '-r', this.requirementsCompiledPath, '--index-strategy', 'unsafe-best-match'];
+    if (process.platform === 'darwin') {
+      return this.manualInstall(callbacks);
+    }
 
+    const installCmd = ['pip', 'install', '-r', this.requirementsCompiledPath, '--index-strategy', 'unsafe-best-match'];
     const { exitCode } = await this.runUvCommandAsync(installCmd, callbacks);
-    if (exitCode !== 0) {
+    if (exitCode == 0) {
       log.error(
         `Failed to install requirements.compiled: exit code ${exitCode}. Falling back to installing requirements.txt`
       );
-
-      await this.installComfyUIRequirements(callbacks);
-      await this.installComfyUIManagerRequirements(callbacks);
+      return this.manualInstall(callbacks);
     }
   }
 
@@ -283,7 +284,13 @@ export class VirtualEnvironment {
     });
   }
 
-  private async installComfyUIRequirements(callbacks?: ProcessCallbacks): Promise<void> {
+  private async manualInstall(callbacks?: ProcessCallbacks): Promise<void> {
+    await this.installPytorch(callbacks);
+    await this.installComfyUIRequirements(callbacks);
+    await this.installComfyUIManagerRequirements(callbacks);
+  }
+
+  private async installPytorch(callbacks?: ProcessCallbacks): Promise<void> {
     if (process.platform === 'win32') {
       log.info('Installing PyTorch CUDA 12.1');
       await this.runUvCommandAsync(
@@ -306,6 +313,9 @@ export class VirtualEnvironment {
         [
           'pip',
           'install',
+          '-U',
+          '--prerelease',
+          'allow',
           'torch',
           'torchvision',
           'torchaudio',
@@ -315,6 +325,8 @@ export class VirtualEnvironment {
         callbacks
       );
     }
+  }
+  private async installComfyUIRequirements(callbacks?: ProcessCallbacks): Promise<void> {
     log.info(`Installing ComfyUI requirements from ${this.comfyUIRequirementsPath}`);
     const installCmd = ['pip', 'install', '-r', this.comfyUIRequirementsPath];
     const { exitCode } = await this.runUvCommandAsync(installCmd, callbacks);
