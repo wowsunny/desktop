@@ -60,12 +60,12 @@ export class ComfyServer {
    */
   get coreLaunchArgs() {
     return {
-      '--user-directory': this.userDirectoryPath,
-      '--input-directory': this.inputDirectoryPath,
-      '--output-directory': this.outputDirectoryPath,
-      '--front-end-root': this.webRootPath,
-      '--extra-model-paths-config': ComfyServerConfig.configPath,
-      '--port': this.serverArgs.port.toString(),
+      'user-directory': this.userDirectoryPath,
+      'input-directory': this.inputDirectoryPath,
+      'output-directory': this.outputDirectoryPath,
+      'front-end-root': this.webRootPath,
+      'extra-model-paths-config': ComfyServerConfig.configPath,
+      port: this.serverArgs.port.toString(),
     };
   }
 
@@ -75,8 +75,10 @@ export class ComfyServer {
         ...this.serverArgs.extraServerArgs,
         ...this.coreLaunchArgs,
       })
+        .map(([key, value]) => [`--${key}`, value])
         .flat()
-        .filter((value: string) => !!value)
+        // Boolean true values are ignored. e.g. { '--cpu': true } => '--cpu'
+        .filter((value: string | boolean) => typeof value === 'string' && value !== '')
     );
   }
 
