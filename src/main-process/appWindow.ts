@@ -17,15 +17,16 @@ export class AppWindow {
   private rendererReady: boolean = false;
 
   public constructor() {
-    this.store = new Store<StoreType>();
     const primaryDisplay = screen.getPrimaryDisplay();
     const { width, height } = primaryDisplay.workAreaSize;
+    const store = this.loadWindowStore();
+    this.store = store;
 
     // Retrieve stored window size, or use default if not available
-    const storedWidth = this.store?.get('windowWidth', width) ?? width;
-    const storedHeight = this.store?.get('windowHeight', height) ?? height;
-    const storedX = this.store?.get('windowX');
-    const storedY = this.store?.get('windowY');
+    const storedWidth = store.get('windowWidth', width) ?? width;
+    const storedHeight = store.get('windowHeight', height) ?? height;
+    const storedX = store.get('windowX');
+    const storedY = store.get('windowY');
 
     this.window = new BrowserWindow({
       title: 'ComfyUI',
@@ -44,6 +45,8 @@ export class AppWindow {
       },
       autoHideMenuBar: true,
     });
+
+    if (store.get('windowMaximized')) this.window.maximize();
 
     this.setupWindowEvents();
     this.setupAppEvents();
@@ -132,9 +135,47 @@ export class AppWindow {
     }
   }
 
+  /**
+   * Loads window state from `userData` via `electron-store`.  Overwrites invalid config with defaults.
+   * @returns The electron store for non-critical window state (size/position etc)
+   * @throws Rethrows errors received from `electron-store` and `app.getPath('userData')`.
+   * There are edge cases where this might not be a catastrophic failure, but inability
+   * to write to our own datastore may result in unexpected user data loss.
+   */
+  private loadWindowStore(): Store<StoreType> {
+    try {
+      // Separate file for non-critical convenience settings - just resets itself if invalid
+      return new Store<StoreType>({
+        clearInvalidConfig: true,
+        name: 'window',
+      });
+    } catch (error) {
+      // Crash: Unknown filesystem error, permission denied on user data folder, etc
+      log.error(`Unknown error whilst loading window configuration.`, error);
+      try {
+        dialog.showErrorBox(
+          'User Data',
+          `Unknown error whilst writing to user data folder:\n\n${app.getPath('userData')}`
+        );
+      } catch (error) {
+        // Crash: Can't even find the user userData folder
+        log.error('Cannot find user data folder.', error);
+        dialog.showErrorBox('Invalid Environment', 'Unknown error whilst attempting to determine user data folder.');
+        throw error;
+      }
+      throw error;
+    }
+  }
+
   private setupWindowEvents(): void {
     const updateBounds = () => {
       if (!this.window) return;
+
+      // If maximized, do not update position / size.
+      const isMaximized = this.window.isMaximized();
+      this.store.set('windowMaximized', isMaximized);
+      if (isMaximized) return;
+
       const { width, height, x, y } = this.window.getBounds();
       this.store.set('windowWidth', width);
       this.store.set('windowHeight', height);
