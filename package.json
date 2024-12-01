@@ -90,7 +90,7 @@
   "license": "GPL-3.0-only",
   "dependencies": {
     "@sentry/electron": "^5.4.0",
-    "@sentry/vite-plugin": "^2.22.4",
+    "@sentry/vite-plugin": "^2.22.6",
     "@todesktop/runtime": "^1.6.4",
     "adm-zip": "^0.5.15",
     "axios": "^1.7.7",
