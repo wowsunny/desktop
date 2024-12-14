@@ -149,11 +149,8 @@ const electronAPI = {
    * @param error The error object or message to send
    * @param extras Optional additional context/data to attach
    */
-  sendErrorToSentry: (error: string, extras?: Record<string, any>) => {
-    return ipcRenderer.invoke(IPC_CHANNELS.SEND_ERROR_TO_SENTRY, {
-      error: error,
-      extras,
-    });
+  sendErrorToSentry: (error: string, extras?: Record<string, unknown>) => {
+    return ipcRenderer.invoke(IPC_CHANNELS.SEND_ERROR_TO_SENTRY, { error, extras });
   },
   Terminal: {
     /**

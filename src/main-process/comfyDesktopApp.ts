@@ -64,7 +64,7 @@ export class ComfyDesktopApp {
       this.terminal?.resize(cols, rows);
     });
 
-    ipcMain.handle(IPC_CHANNELS.TERMINAL_RESTORE, (_event) => {
+    ipcMain.handle(IPC_CHANNELS.TERMINAL_RESTORE, () => {
       return this.terminal?.restore();
     });
   }
@@ -83,7 +83,7 @@ export class ComfyDesktopApp {
       }));
 
       // Combine all GPU info into a single object
-      const allGpuInfo = Object.assign({}, ...gpuInfo);
+      const allGpuInfo = { ...gpuInfo };
       // Set Sentry context with all GPU information
       Sentry.setContext('gpus', allGpuInfo);
     } catch (e) {
@@ -120,26 +120,34 @@ export class ComfyDesktopApp {
       log.info('Reinstalling...');
       this.reinstall();
     });
-    ipcMain.handle(IPC_CHANNELS.SEND_ERROR_TO_SENTRY, async (_event, { error, extras }): Promise<string | null> => {
-      try {
-        return Sentry.captureMessage(error, {
-          level: 'error',
-          extra: { ...extras, comfyUIExecutionError: true },
-          tags: {
-            comfyorigin: 'core',
-          },
-        });
-      } catch (err) {
-        log.error('Failed to send error to Sentry:', err);
-        return null;
+    type SentryErrorDetail = {
+      error: string;
+      extras?: Record<string, unknown>;
+    };
+
+    ipcMain.handle(
+      IPC_CHANNELS.SEND_ERROR_TO_SENTRY,
+      async (_event, { error, extras }: SentryErrorDetail): Promise<string | null> => {
+        try {
+          return Sentry.captureMessage(error, {
+            level: 'error',
+            extra: { ...extras, comfyUIExecutionError: true },
+            tags: {
+              comfyorigin: 'core',
+            },
+          });
+        } catch (err) {
+          log.error('Failed to send error to Sentry:', err);
+          return null;
+        }
       }
-    });
+    );
     // Config
-    ipcMain.handle(IPC_CHANNELS.GET_GPU, async (_event): Promise<TorchDeviceType | undefined> => {
+    ipcMain.handle(IPC_CHANNELS.GET_GPU, async (): Promise<TorchDeviceType | undefined> => {
       return await useDesktopConfig().getAsync('detectedGpu');
     });
     // Restart core
-    ipcMain.handle(IPC_CHANNELS.RESTART_CORE, async (_event): Promise<boolean> => {
+    ipcMain.handle(IPC_CHANNELS.RESTART_CORE, async (): Promise<boolean> => {
       if (!this.comfyServer) return false;
       await this.comfyServer?.kill();
       await this.comfyServer.start();
@@ -200,7 +208,7 @@ export class ComfyDesktopApp {
     log.info('Server start');
     await this.appWindow.loadRenderer('server-start');
 
-    DownloadManager.getInstance(this.appWindow!, getModelsDirectory(this.basePath));
+    DownloadManager.getInstance(this.appWindow, getModelsDirectory(this.basePath));
 
     this.appWindow.sendServerStartProgress(ProgressStatus.PYTHON_SETUP);
 
