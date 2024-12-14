@@ -1,4 +1,4 @@
-import { BrowserWindow, screen, app, shell, ipcMain, Tray, Menu, dialog, MenuItem, type Point } from 'electron';
+import { BrowserWindow, screen, app, shell, ipcMain, Tray, Menu, dialog, MenuItem } from 'electron';
 import path from 'node:path';
 import Store from 'electron-store';
 import { AppWindowSettings } from '../store';
@@ -103,9 +103,9 @@ export class AppWindow {
     });
   }
 
-  public loadComfyUI(serverArgs: ServerArgs) {
+  public async loadComfyUI(serverArgs: ServerArgs) {
     const host = serverArgs.host === '0.0.0.0' ? 'localhost' : serverArgs.host;
-    this.window.loadURL(`http://${host}:${serverArgs.port}`);
+    await this.window.loadURL(`http://${host}:${serverArgs.port}`);
   }
 
   public openDevTools(): void {
@@ -146,7 +146,7 @@ export class AppWindow {
     } else {
       const appResourcesPath = getAppResourcesPath();
       const frontendPath = path.join(appResourcesPath, 'ComfyUI', 'web_custom_versions', 'desktop_app');
-      this.window.loadFile(path.join(frontendPath, 'index.html'), { hash: urlPath });
+      await this.window.loadFile(path.join(frontendPath, 'index.html'), { hash: urlPath });
     }
   }
 
