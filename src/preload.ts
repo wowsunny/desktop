@@ -2,6 +2,7 @@ import { contextBridge, ipcRenderer } from 'electron';
 import { IPC_CHANNELS, ELECTRON_BRIDGE_API, ProgressStatus, DownloadStatus } from './constants';
 import type { DownloadState } from './models/DownloadManager';
 import path from 'node:path';
+import { DesktopConfig } from './store/desktopConfig';
 
 /**
  * Open a folder in the system's default file explorer.
@@ -12,12 +13,18 @@ const openFolder = async (folderPath: string) => {
   ipcRenderer.send(IPC_CHANNELS.OPEN_PATH, path.join(basePath, folderPath));
 };
 
+export type GpuType = 'nvidia' | 'mps' | 'unsupported';
+export type TorchDeviceType = GpuType | 'cpu';
+
 export interface InstallOptions {
+  /** Base installation path */
   installPath: string;
   autoUpdate: boolean;
   allowMetrics: boolean;
   migrationSourcePath?: string;
   migrationItemIds?: string[];
+  /** Torch compute device */
+  device?: TorchDeviceType;
 }
 
 export interface SystemPaths {
@@ -228,6 +235,23 @@ const electronAPI = {
    */
   showContextMenu: (options?: ElectronContextMenuOptions): void => {
     return ipcRenderer.send(IPC_CHANNELS.SHOW_CONTEXT_MENU, options);
+  },
+  Config: {
+    /**
+     * Finds the name of the last detected GPU type.  Detection only runs during installation.
+     * @returns The last GPU detected by `validateHardware` - runs during installation
+     */
+    getDetectedGpu: async (): Promise<GpuType | undefined> => {
+      return await ipcRenderer.invoke(IPC_CHANNELS.GET_GPU);
+    },
+  },
+  /** Restart the python server without restarting desktop. */
+  restartCore: async (): Promise<void> => {
+    console.log('Restarting core process');
+    await ipcRenderer.invoke(IPC_CHANNELS.RESTART_APP);
+  },
+  getPlatform: (): NodeJS.Platform => {
+    return process.platform;
   },
 } as const;
 

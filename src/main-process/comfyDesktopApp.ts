@@ -9,7 +9,7 @@ import { AppWindow } from './appWindow';
 import { ComfyServer } from './comfyServer';
 import { ComfyServerConfig } from '../config/comfyServerConfig';
 import fs from 'fs';
-import { InstallOptions, type ElectronContextMenuOptions } from '../preload';
+import { InstallOptions, type ElectronContextMenuOptions, type TorchDeviceType } from '../preload';
 import path from 'path';
 import { ansiCodes, getModelsDirectory, validateHardware } from '../utils';
 import { DownloadManager } from '../models/DownloadManager';
@@ -134,6 +134,17 @@ export class ComfyDesktopApp {
         return null;
       }
     });
+    // Config
+    ipcMain.handle(IPC_CHANNELS.GET_GPU, async (_event): Promise<TorchDeviceType | undefined> => {
+      return await DesktopConfig.getAsync('detectedGpu');
+    });
+    // Restart core
+    ipcMain.handle(IPC_CHANNELS.RESTART_CORE, async (_event): Promise<boolean> => {
+      if (!this.comfyServer) return false;
+      await this.comfyServer?.kill();
+      await this.comfyServer.start();
+      return true;
+    });
   }
 
   /**
@@ -141,6 +152,8 @@ export class ComfyDesktopApp {
    */
   static async install(appWindow: AppWindow): Promise<string> {
     const validation = await validateHardware();
+    if (typeof validation?.gpu === 'string') DesktopConfig.store.set('detectedGpu', validation.gpu);
+
     if (!validation.isValid) {
       await appWindow.loadRenderer('not-supported');
       log.error(validation.error);
@@ -153,6 +166,11 @@ export class ComfyDesktopApp {
         const installWizard = new InstallWizard(installOptions);
         const { store } = DesktopConfig;
         store.set('basePath', installWizard.basePath);
+
+        const { device } = installOptions;
+        if (device !== undefined) {
+          store.set('selectedDevice', device);
+        }
 
         await installWizard.install();
         store.set('installState', 'installed');
@@ -182,7 +200,11 @@ export class ComfyDesktopApp {
     DownloadManager.getInstance(this.appWindow!, getModelsDirectory(this.basePath));
 
     this.appWindow.sendServerStartProgress(ProgressStatus.PYTHON_SETUP);
-    const virtualEnvironment = new VirtualEnvironment(this.basePath);
+
+    const { store } = DesktopConfig;
+    const selectedDevice = store.get('selectedDevice');
+    const virtualEnvironment = new VirtualEnvironment(this.basePath, selectedDevice);
+
     await virtualEnvironment.create({
       onStdout: (data) => {
         log.info(data.replaceAll(ansiCodes, ''));
@@ -193,7 +215,7 @@ export class ComfyDesktopApp {
         this.appWindow.send(IPC_CHANNELS.LOG_MESSAGE, data);
       },
     });
-    const { store } = DesktopConfig;
+
     if (!store.get('Comfy-Desktop.RestoredCustomNodes', false)) {
       try {
         await restoreCustomNodes(virtualEnvironment, this.appWindow);

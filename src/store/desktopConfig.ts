@@ -4,6 +4,7 @@ import { app, dialog, shell } from 'electron';
 import path from 'node:path';
 import fs from 'fs/promises';
 import type { DesktopSettings } from '.';
+import type { TorchDeviceType } from '../preload';
 
 /** Handles loading of electron-store config, pre-window errors, and provides a non-null interface for the store. */
 export class DesktopConfig {
@@ -12,6 +13,10 @@ export class DesktopConfig {
     const store = this.#store;
     if (!store) throw new Error('Cannot access store before initialization.');
     return store;
+  }
+
+  static get gpu(): TorchDeviceType | undefined {
+    return DesktopConfig.store.get('detectedGpu');
   }
 
   static async load(
@@ -55,6 +60,35 @@ export class DesktopConfig {
         dialog.showErrorBox('User Data', `Unknown error whilst writing to user data folder:\n\n${configFilePath}`);
       }
     }
+  }
+
+  /**
+   * Saves each {@link config} setting individually, returning a promise for the task.
+   * @param key The key of {@link DesktopSettings} to save
+   * @param value The value to be saved.  Must be valid.
+   * @returns A promise that resolves on successful save, or rejects with the first caught error.
+   */
+  static async setAsync<Key extends keyof DesktopSettings>(key: Key, value: DesktopSettings[Key]): Promise<void> {
+    return new Promise((resolve, reject) => {
+      log.info(`Saving setting: [${key}]`, value);
+      try {
+        DesktopConfig.store.set(key, value);
+        resolve();
+      } catch (error) {
+        reject(error);
+      }
+    });
+  }
+
+  /** @inheritdoc {@link ElectronStore.get} */
+  static async getAsync<Key extends keyof DesktopSettings>(key: Key): Promise<DesktopSettings[Key]> {
+    return new Promise((resolve, reject) => {
+      try {
+        resolve(DesktopConfig.store.get(key));
+      } catch (error) {
+        reject(error);
+      }
+    });
   }
 }
 
