@@ -1,5 +1,5 @@
 import { IPC_CHANNELS, DEFAULT_SERVER_ARGS, ProgressStatus } from './constants';
-import { app, dialog, ipcMain } from 'electron';
+import { app, dialog, ipcMain, shell } from 'electron';
 import log from 'electron-log/main';
 import { findAvailablePort } from './utils';
 import dotenv from 'dotenv';
@@ -41,12 +41,15 @@ if (!gotTheLock) {
   app.on('ready', async () => {
     log.debug('App ready');
 
-    const store = await DesktopConfig.load();
-    if (store) {
-      startApp();
-    } else {
+    try {
+      const store = await DesktopConfig.load(shell);
+      if (!store) throw new Error('Unknown error loading app config on startup.');
+    } catch (error) {
+      dialog.showErrorBox('User Data', `Unknown error whilst writing to user data folder:\n\n${error}`);
       app.exit(20);
     }
+
+    await startApp();
   });
 }
 
