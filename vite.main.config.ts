@@ -6,15 +6,13 @@ import { version } from './package.json';
 
 // https://vitejs.dev/config
 export default defineConfig((env) => {
-  const forgeEnv = env as ConfigEnv;
-
   const config: UserConfig = {
     build: {
       outDir: '.vite/build',
       lib: {
         entry: './src/main.ts',
         fileName: () => '[name].js',
-        formats: ['cjs'],
+        formats: ['es'],
       },
       rollupOptions: {
         external,
@@ -46,5 +44,5 @@ export default defineConfig((env) => {
     },
   };
 
-  return mergeConfig(getBuildConfig(forgeEnv), config);
+  return mergeConfig(getBuildConfig(env), config);
 });
