@@ -2,7 +2,7 @@ import log from 'electron-log/main';
 import ElectronStore from 'electron-store';
 import { app, dialog } from 'electron';
 import path from 'node:path';
-import fs from 'fs/promises';
+import fs from 'node:fs/promises';
 import type { DesktopSettings } from '.';
 
 /** Backing ref for the singleton config instance. */
@@ -36,6 +36,7 @@ export class DesktopConfig {
    * Static factory method. Loads the config from disk.
    * @param shell Shell environment that can open file and folder views for the user
    * @param options electron-store options to pass through to the backing store
+   * @returns The newly created instance, or `undefined` on error.
    * @throws On unknown error
    */
   static async load(

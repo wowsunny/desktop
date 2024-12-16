@@ -8,9 +8,9 @@ import { ComfySettings } from '../config/comfySettings';
 import { AppWindow } from './appWindow';
 import { ComfyServer } from './comfyServer';
 import { ComfyServerConfig } from '../config/comfyServerConfig';
-import fs from 'fs';
+import fs from 'node:fs';
 import { InstallOptions, type ElectronContextMenuOptions, type TorchDeviceType } from '../preload';
-import path from 'path';
+import path from 'node:path';
 import { ansiCodes, getModelsDirectory, validateHardware } from '../utils';
 import { DownloadManager } from '../models/DownloadManager';
 import { VirtualEnvironment } from '../virtualEnvironment';
@@ -86,8 +86,8 @@ export class ComfyDesktopApp {
       const allGpuInfo = { ...gpuInfo };
       // Set Sentry context with all GPU information
       Sentry.setContext('gpus', allGpuInfo);
-    } catch (e) {
-      log.error('Error getting GPU info: ', e);
+    } catch (error) {
+      log.error('Error getting GPU info: ', error);
     }
   }
 
@@ -136,8 +136,8 @@ export class ComfyDesktopApp {
               comfyorigin: 'core',
             },
           });
-        } catch (err) {
-          log.error('Failed to send error to Sentry:', err);
+        } catch (error_) {
+          log.error('Failed to send error to Sentry:', error_);
           return null;
         }
       }
@@ -186,9 +186,7 @@ export class ComfyDesktopApp {
             appWindow.maximize();
             resolve(installWizard.basePath);
           })
-          .catch((reason) => {
-            reject(reason);
-          });
+          .catch(reject);
       });
     });
   }
@@ -290,9 +288,8 @@ export class ComfyDesktopApp {
         return null;
       case 'notFound':
         return null;
-      case 'error':
       default:
-        // Explain and quit
+        // 'error': Explain and quit
         // TODO: Support link?  Something?
         await InstallationValidator.showInvalidFileAndQuit(ComfyServerConfig.configPath, {
           message: `Unable to read the YAML configuration file.  Please ensure this file is available and can be read:
@@ -304,7 +301,7 @@ If this problem persists, back up and delete the config file, then restart the a
           defaultId: 0,
           cancelId: 1,
         });
-        throw new Error(/* Unreachable. */);
+        throw new Error('Unreachable');
     }
   }
 

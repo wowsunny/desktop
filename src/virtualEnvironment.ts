@@ -1,10 +1,10 @@
-import * as path from 'node:path';
+import path from 'node:path';
 import { spawn, ChildProcess } from 'node:child_process';
 import log from 'electron-log/main';
 import { pathAccessible } from './utils';
 import { app } from 'electron';
-import * as pty from 'node-pty';
-import * as os from 'os';
+import pty from 'node-pty';
+import os from 'node:os';
 import { getDefaultShell } from './shell/util';
 import type { TorchDeviceType } from './preload';
 
@@ -197,7 +197,7 @@ export class VirtualEnvironment {
       pythonInterpreterPath,
       args,
       {
-        PYTHONIOENCODING: 'utf-8',
+        PYTHONIOENCODING: 'utf8',
       },
       callbacks
     );
@@ -216,7 +216,7 @@ export class VirtualEnvironment {
       this.pythonInterpreterPath,
       args,
       {
-        PYTHONIOENCODING: 'utf-8',
+        PYTHONIOENCODING: 'utf8',
       },
       callbacks
     );
@@ -234,7 +234,7 @@ export class VirtualEnvironment {
   }
 
   private async runPtyCommandAsync(command: string, onData?: (data: string) => void): Promise<{ exitCode: number }> {
-    const id = new Date().valueOf();
+    const id = Date.now();
     return new Promise((res) => {
       const endMarker = `--end-${id}:`;
       const input = `clear; ${command}; echo "${endMarker}$?"`;
@@ -242,7 +242,7 @@ export class VirtualEnvironment {
         const lines = data.split('\n');
         for (const line of lines) {
           // Remove ansi sequences to see if this the exit marker
-          const clean = line.replace(/\u001b\[[0-9;?]*[a-zA-Z]/g, '');
+          const clean = line.replaceAll(/\u001B\[[\d;?]*[A-Za-z]/g, '');
           if (clean.startsWith(endMarker)) {
             const exit = clean.substring(endMarker.length).trim();
             let exitCode: number;
@@ -253,8 +253,8 @@ export class VirtualEnvironment {
               exitCode = -999;
             } else {
               // Bash should output a number
-              exitCode = parseInt(exit);
-              if (isNaN(exitCode)) {
+              exitCode = Number.parseInt(exit);
+              if (Number.isNaN(exitCode)) {
                 console.warn('Unable to parse exit code:', exit);
                 exitCode = -998;
               }
@@ -315,8 +315,8 @@ export class VirtualEnvironment {
         resolve({ exitCode: code });
       });
 
-      childProcess.on('error', (err) => {
-        reject(err);
+      childProcess.on('error', (error) => {
+        reject(error);
       });
     });
   }
