@@ -142,10 +142,6 @@ export class ComfyDesktopApp {
         }
       }
     );
-    // Config
-    ipcMain.handle(IPC_CHANNELS.GET_GPU, async (): Promise<TorchDeviceType | undefined> => {
-      return await useDesktopConfig().getAsync('detectedGpu');
-    });
     // Restart core
     ipcMain.handle(IPC_CHANNELS.RESTART_CORE, async (): Promise<boolean> => {
       if (!this.comfyServer) return false;
@@ -159,8 +155,11 @@ export class ComfyDesktopApp {
    * Install ComfyUI and return the base path.
    */
   static async install(appWindow: AppWindow): Promise<string> {
+    const config = useDesktopConfig();
+    if (!config.get('installState')) config.set('installState', 'started');
+
     const validation = await validateHardware();
-    if (typeof validation?.gpu === 'string') useDesktopConfig().set('detectedGpu', validation.gpu);
+    if (typeof validation?.gpu === 'string') config.set('detectedGpu', validation.gpu);
 
     if (!validation.isValid) {
       await appWindow.loadRenderer('not-supported');
