@@ -10,6 +10,7 @@ import { ComfyDesktopApp } from './main-process/comfyDesktopApp';
 import { LevelOption } from 'electron-log';
 import SentryLogging from './services/sentry';
 import { DesktopConfig } from './store/desktopConfig';
+import { InstallationManager } from './install/installationManager';
 
 dotenv.config();
 log.initialize();
@@ -84,7 +85,13 @@ async function startApp() {
     });
 
     try {
-      const comfyDesktopApp = await ComfyDesktopApp.create(appWindow);
+      // Install / validate installation is complete
+      const installManager = new InstallationManager(appWindow);
+      const installation = await installManager.ensureInstalled();
+      if (!installation.isValid) throw new Error('Fatal: Could not validate installation.');
+
+      // Initialize app
+      const comfyDesktopApp = ComfyDesktopApp.create(appWindow, installation.basePath);
       await comfyDesktopApp.initialize();
       SentryLogging.comfyDesktopApp = comfyDesktopApp;
 

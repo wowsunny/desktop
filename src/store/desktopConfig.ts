@@ -3,7 +3,7 @@ import ElectronStore from 'electron-store';
 import { app, dialog } from 'electron';
 import path from 'node:path';
 import fs from 'node:fs/promises';
-import type { DesktopSettings } from '.';
+import type { DesktopSettings } from './desktopSettings';
 
 /** Backing ref for the singleton config instance. */
 let current: DesktopConfig;
@@ -24,11 +24,13 @@ export class DesktopConfig {
 
   /** @inheritdoc {@link ElectronStore.get} */
   get<Key extends keyof DesktopSettings>(key: Key, defaultValue?: Required<DesktopSettings>[Key]) {
+    log.verbose('Getting config:', key);
     return defaultValue === undefined ? this.#store.get(key) : this.#store.get(key, defaultValue);
   }
 
   /** @inheritdoc {@link ElectronStore.set} */
   set<Key extends keyof DesktopSettings>(key: Key, value: Required<DesktopSettings>[Key]) {
+    log.verbose('Saving config:', key, '->', value);
     return value === undefined ? this.#store.delete(key) : this.#store.set(key, value);
   }
 
