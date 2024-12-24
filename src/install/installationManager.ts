@@ -48,7 +48,10 @@ export class InstallationManager {
    */
   async resumeInstallation(installation: ComfyInstallation) {
     // TODO: Resume install at point of interruption
-    if (installation.state === 'started') await this.freshInstall();
+    if (installation.state === 'started') {
+      await this.freshInstall();
+      installation.setState('installed');
+    }
     if (installation.state === 'upgraded') installation.upgradeConfig();
   }
 
@@ -92,7 +95,9 @@ export class InstallationManager {
 
     await installWizard.install();
     this.appWindow.maximize();
-    if (installWizard.shouldMigrateCustomNodes && installWizard.migrationSource) {
+    const shouldMigrateCustomNodes =
+      !!installWizard.migrationSource && installWizard.migrationItemIds.has('custom_nodes');
+    if (shouldMigrateCustomNodes) {
       useDesktopConfig().set('migrateCustomNodesFrom', installWizard.migrationSource);
     }
 
