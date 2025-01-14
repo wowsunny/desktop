@@ -15,6 +15,9 @@ export type ProcessCallbacks = {
 
 /**
  * Manages a virtual Python environment using uv.
+ *
+ * Maintains its own node-pty instance; output from this is piped to the virtual terminal.
+ * @todo Split either installation or terminal management to a separate class.
  */
 export class VirtualEnvironment {
   readonly venvRootPath: string;
@@ -277,11 +280,11 @@ export class VirtualEnvironment {
     args: string[],
     env: Record<string, string>,
     callbacks?: ProcessCallbacks,
-    cwd?: string
+    cwd: string = this.venvRootPath
   ): ChildProcess {
-    log.info(`Running command: ${command} ${args.join(' ')} in ${this.venvRootPath}`);
+    log.info(`Running command: ${command} ${args.join(' ')} in ${cwd}`);
     const childProcess: ChildProcess = spawn(command, args, {
-      cwd: cwd ?? this.venvRootPath,
+      cwd,
       env: {
         ...process.env,
         ...env,
