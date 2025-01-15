@@ -247,6 +247,10 @@ The launch environment can be customised, e.g. add a `"linux"` section to source
 }
 ```
 
+### Troubleshooting the packaged app
+
+When the app has been packaged for use as a production app, it ignores environment variables used to configure development settings. To force the app to read env vars when packaged, use the `--dev-mode` command line argument to launch the app.
+
 # Release
 
 We use Todesktop to build and codesign our distributables. To make a new release:

@@ -16,6 +16,8 @@ dotenv.config();
 log.initialize();
 log.transports.file.level = (process.env.LOG_LEVEL as LevelOption) ?? 'info';
 
+const allowDevVars = app.commandLine.hasSwitch('dev-mode');
+
 // Register the quit handlers regardless of single instance lock and before squirrel startup events.
 // Quit when all windows are closed, except on macOS. There, it's common
 // for applications and their menu bar to stay active until the user quits
@@ -98,22 +100,22 @@ async function startApp() {
       SentryLogging.comfyDesktopApp = comfyDesktopApp;
 
       // Construct core launch args
-      const useDevServer = !app.isPackaged && process.env.DEV_SERVER_URL;
+      const useExternalServer = devOverride('USE_EXTERNAL_SERVER') === 'true';
       // Shallow-clone the setting launch args to avoid mutation.
       const extraServerArgs: Record<string, string> = Object.assign(
         {},
         comfyDesktopApp.comfySettings.get('Comfy.Server.LaunchArgs')
       );
-      const host = extraServerArgs.listen ?? DEFAULT_SERVER_ARGS.host;
-      const targetPort = Number(extraServerArgs.port ?? DEFAULT_SERVER_ARGS.port);
-      const port = useDevServer ? targetPort : await findAvailablePort(host, targetPort, targetPort + 1000);
+      const host = devOverride('COMFY_HOST') ?? extraServerArgs.listen ?? DEFAULT_SERVER_ARGS.host;
+      const targetPort = Number(devOverride('COMFY_PORT') ?? extraServerArgs.port ?? DEFAULT_SERVER_ARGS.port);
+      const port = useExternalServer ? targetPort : await findAvailablePort(host, targetPort, targetPort + 1000);
 
       // Remove listen and port from extraServerArgs so core launch args are used instead.
       delete extraServerArgs.listen;
       delete extraServerArgs.port;
 
       // Start server
-      if (!useDevServer) {
+      if (!useExternalServer) {
         try {
           await comfyDesktopApp.startComfyServer({ host, port, extraServerArgs });
         } catch (error) {
@@ -141,4 +143,14 @@ async function startApp() {
     log.error('Fatal error occurred during app pre-startup.', error);
     app.exit(2024);
   }
+}
+
+/**
+ * Always returns `undefined` in production, unless the `--dev-mode` command line argument is present.
+ *
+ * When running unpackaged or if the `--dev-mode` argument is present,
+ * the requested environment variable is returned, otherwise `undefined`.
+ */
+function devOverride(value: string) {
+  if (allowDevVars || !app.isPackaged) return process.env[value];
 }
