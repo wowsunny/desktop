@@ -34,6 +34,7 @@ export class VirtualEnvironment implements HasTelemetry {
   readonly selectedDevice?: string;
   uvPty: pty.IPty | undefined;
 
+  /** @todo Refactor to `using` */
   get uvPtyInstance() {
     if (!this.uvPty) {
       const shell = getDefaultShell();
@@ -119,7 +120,10 @@ export class VirtualEnvironment implements HasTelemetry {
       await this.createEnvironment(callbacks);
     } finally {
       const pid = this.uvPty?.pid;
-      if (pid) process.kill(pid);
+      if (pid) {
+        process.kill(pid);
+        this.uvPty = undefined;
+      }
     }
   }
 
@@ -255,7 +259,7 @@ export class VirtualEnvironment implements HasTelemetry {
    * @param args
    * @returns
    */
-  public async runUvCommandAsync(args: string[], callbacks?: ProcessCallbacks): Promise<{ exitCode: number | null }> {
+  private async runUvCommandAsync(args: string[], callbacks?: ProcessCallbacks): Promise<{ exitCode: number | null }> {
     const uvCommand = os.platform() === 'win32' ? `& "${this.uvPath}"` : this.uvPath;
     log.info(`Running uv command: ${uvCommand} ${args.join(' ')}`);
     return this.runPtyCommandAsync(`${uvCommand} ${args.map((a) => `"${a}"`).join(' ')}`, callbacks?.onStdout);
