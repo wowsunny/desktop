@@ -269,14 +269,13 @@ export class VirtualEnvironment implements HasTelemetry {
     const id = Date.now();
     return new Promise((res) => {
       const endMarker = `_-end-${id}:`;
-      const input = `clear${EOL}${command}${EOL}echo "${endMarker}$?"`;
+      const input = `${command}\recho "${endMarker}$?"`;
       const dataReader = this.uvPtyInstance.onData((data) => {
-        const lines = data.split(/(\r\n|\n)/);
+        // Remove ansi sequences to see if this the exit marker
+        const lines = data.replaceAll(/\u001B\[[\d;?]*[A-Za-z]/g, '').split(/(\r\n|\n)/);
         for (const line of lines) {
-          // Remove ansi sequences to see if this the exit marker
-          const clean = line.replaceAll(/\u001B\[[\d;?]*[A-Za-z]/g, '');
-          if (clean.startsWith(endMarker)) {
-            const exit = clean.substring(endMarker.length).trim();
+          if (line.startsWith(endMarker)) {
+            const exit = line.substring(endMarker.length).trim();
             let exitCode: number;
             // Powershell outputs True / False for success
             if (exit === 'True') {
@@ -292,15 +291,13 @@ export class VirtualEnvironment implements HasTelemetry {
               }
             }
             dataReader.dispose();
-            res({
-              exitCode,
-            });
+            res({ exitCode });
             break;
           }
         }
         onData?.(data);
       });
-      this.uvPtyInstance.write(`${input}${EOL}`);
+      this.uvPtyInstance.write(`${input}\r`);
     });
   }
 
