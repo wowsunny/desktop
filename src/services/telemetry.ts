@@ -18,6 +18,12 @@ export interface ITelemetry {
   registerHandlers(): void;
 }
 
+interface GpuInfo {
+  model: string;
+  vendor: string;
+  vram: number | null;
+}
+
 const MIXPANEL_TOKEN = '6a7f9f6ae2084b4e7ff7ced98a6b5988';
 export class MixpanelTelemetry {
   public hasConsent: boolean = false;
@@ -25,6 +31,7 @@ export class MixpanelTelemetry {
   private readonly storageFile: string;
   private queue: { eventName: string; properties: PropertyDict }[] = [];
   private mixpanelClient: mixpanel.Mixpanel;
+  private cachedGpuInfo: GpuInfo[] | null = null;
   constructor(mixpanelClass: mixpanel.Mixpanel) {
     this.mixpanelClient = mixpanelClass.init(MIXPANEL_TOKEN, {
       geolocate: true,
@@ -38,6 +45,8 @@ export class MixpanelTelemetry {
         this.hasConsent = true;
       }
     });
+    // Eagerly fetch GPU info
+    void this.fetchAndCacheGpuInformation();
   }
 
   private getOrCreateDistinctId(filePath: string): string {
@@ -88,7 +97,7 @@ export class MixpanelTelemetry {
         ...properties,
       };
       this.mixpanelTrack(eventName, enrichedProperties);
-      // eslint-disable-next-line @typescript-eslint/no-floating-promises
+
       this.identify();
     } catch (error) {
       log.error('Failed to track event:', error);
@@ -115,28 +124,30 @@ export class MixpanelTelemetry {
     });
   }
 
-  private async identify(): Promise<void> {
+  /**
+   * Fetch GPU information and cache it.
+   */
+  private async fetchAndCacheGpuInformation(): Promise<void> {
     try {
       const gpuData = await si.graphics();
-      const gpus = gpuData.controllers.map((gpu) => ({
+      this.cachedGpuInfo = gpuData.controllers.map((gpu) => ({
         model: gpu.model,
         vendor: gpu.vendor,
         vram: gpu.vram,
       }));
-
-      this.mixpanelClient.people.set(this.distinctId, {
-        platform: process.platform,
-        arch: os.arch(),
-        gpus: gpus,
-        app_version: app.getVersion(),
-      });
     } catch (error) {
       log.error('Failed to get GPU information:', error);
-      this.mixpanelClient.people.set(this.distinctId, {
-        platform: process.platform,
-        arch: os.arch(),
-      });
+      this.cachedGpuInfo = [];
     }
+  }
+
+  private identify(): void {
+    this.mixpanelClient.people.set(this.distinctId, {
+      platform: process.platform,
+      arch: os.arch(),
+      gpus: this.cachedGpuInfo || [],
+      app_version: app.getVersion(),
+    });
   }
 
   private mixpanelTrack(eventName: string, properties: PropertyDict): void {
