@@ -1,7 +1,8 @@
 import { contextBridge, ipcRenderer } from 'electron';
-import { IPC_CHANNELS, ELECTRON_BRIDGE_API, ProgressStatus, DownloadStatus } from './constants';
-import type { DownloadState } from './models/DownloadManager';
 import path from 'node:path';
+
+import { DownloadStatus, ELECTRON_BRIDGE_API, IPC_CHANNELS, ProgressStatus } from './constants';
+import type { DownloadState } from './models/DownloadManager';
 import type { DesktopSettings } from './store/desktopSettings';
 
 /**
