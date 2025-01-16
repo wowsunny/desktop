@@ -17,6 +17,7 @@ import { findAvailablePort } from './utils';
 dotenv.config();
 log.initialize();
 log.transports.file.level = (process.env.LOG_LEVEL as LevelOption) ?? 'info';
+log.info(`Starting app v${app.getVersion()}`);
 
 const allowDevVars = app.commandLine.hasSwitch('dev-mode');
 
@@ -40,6 +41,7 @@ app.on('before-quit', () => {
 });
 
 // Sentry needs to be initialized at the top level.
+log.verbose('Initializing Sentry');
 SentryLogging.init();
 
 // Synchronous app start
@@ -99,7 +101,7 @@ async function startApp() {
         throw new Error(`Fatal: Could not validate installation: [${installation.state}/${installation.issues.size}]`);
 
       // Initialize app
-      const comfyDesktopApp = ComfyDesktopApp.create(appWindow, installation, telemetry);
+      const comfyDesktopApp = new ComfyDesktopApp(installation, appWindow, telemetry);
       await comfyDesktopApp.initialize();
 
       // At this point, user has gone through the onboarding flow.

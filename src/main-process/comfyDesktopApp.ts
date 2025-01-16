@@ -18,18 +18,20 @@ import { DesktopConfig, useDesktopConfig } from '../store/desktopConfig';
 import { ansiCodes, getModelsDirectory } from '../utils';
 import { ProcessCallbacks, VirtualEnvironment } from '../virtualEnvironment';
 import { AppWindow } from './appWindow';
-import { type ComfyInstallation } from './comfyInstallation';
+import type { ComfyInstallation } from './comfyInstallation';
 import { ComfyServer } from './comfyServer';
 
 export class ComfyDesktopApp implements HasTelemetry {
   public comfyServer: ComfyServer | null = null;
+  public comfySettings: ComfySettings;
   private terminal: Terminal | null = null; // Only created after server starts.
   constructor(
-    public readonly installation: ComfyInstallation,
-    public comfySettings: ComfySettings,
+    public installation: ComfyInstallation,
     public appWindow: AppWindow,
     readonly telemetry: ITelemetry
-  ) {}
+  ) {
+    this.comfySettings = new ComfySettings(installation.basePath);
+  }
 
   get basePath() {
     return this.installation.basePath;
@@ -204,10 +206,6 @@ export class ComfyDesktopApp implements HasTelemetry {
       // Always remove the flag so the user doesnt get stuck here
       config.delete('migrateCustomNodesFrom');
     }
-  }
-
-  static create(appWindow: AppWindow, installation: ComfyInstallation, telemetry: ITelemetry): ComfyDesktopApp {
-    return new ComfyDesktopApp(installation, new ComfySettings(installation.basePath), appWindow, telemetry);
   }
 
   async uninstall(): Promise<void> {
