@@ -331,6 +331,9 @@ const electronAPI = {
   },
   /** Gets the platform reported by node.js */
   getPlatform: () => process.platform,
+  setMetricsConsent: async (consent: boolean) => {
+    await ipcRenderer.invoke(IPC_CHANNELS.SET_METRICS_CONSENT, consent);
+  },
 
   /**
    *  Interfaces related to installation / install validation

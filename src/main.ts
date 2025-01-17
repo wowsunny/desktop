@@ -10,7 +10,7 @@ import { InstallationManager } from './install/installationManager';
 import { AppWindow } from './main-process/appWindow';
 import { ComfyDesktopApp } from './main-process/comfyDesktopApp';
 import SentryLogging from './services/sentry';
-import { getTelemetry } from './services/telemetry';
+import { getTelemetry, promptMetricsConsent } from './services/telemetry';
 import { DesktopConfig } from './store/desktopConfig';
 import { findAvailablePort } from './utils';
 
@@ -64,8 +64,9 @@ if (!gotTheLock) {
 // Async app start
 async function startApp() {
   // Load config or exit
+  let store: DesktopConfig | undefined;
   try {
-    const store = await DesktopConfig.load(shell);
+    store = await DesktopConfig.load(shell);
     if (!store) throw new Error('Unknown error loading app config on startup.');
   } catch (error) {
     log.error('Unhandled exception during config load', error);
@@ -114,10 +115,10 @@ async function startApp() {
 
       // At this point, user has gone through the onboarding flow.
       SentryLogging.comfyDesktopApp = comfyDesktopApp;
-      if (comfyDesktopApp.comfySettings.get('Comfy-Desktop.SendStatistics')) {
-        telemetry.hasConsent = true;
-        telemetry.flush();
-      }
+      const allowMetrics = await promptMetricsConsent(store, appWindow, comfyDesktopApp);
+      telemetry.hasConsent = allowMetrics;
+      if (allowMetrics) telemetry.flush();
+
       // Construct core launch args
       const useExternalServer = devOverride('USE_EXTERNAL_SERVER') === 'true';
       // Shallow-clone the setting launch args to avoid mutation.

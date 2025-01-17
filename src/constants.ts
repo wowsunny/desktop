@@ -43,6 +43,7 @@ export const IPC_CHANNELS = {
   UV_INSTALL_REQUIREMENTS: 'uv-install-requirements',
   GET_WINDOW_STYLE: 'get-window-style',
   TRACK_EVENT: 'track-event',
+  SET_METRICS_CONSENT: 'set-metrics-consent',
   INCREMENT_USER_PROPERTY: 'increment-user-property',
   UV_CLEAR_CACHE: 'uv-clear-cache',
   UV_RESET_VENV: 'uv-delete-venv',

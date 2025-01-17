@@ -1,9 +1,9 @@
 import { IpcMainEvent, ipcMain } from 'electron';
 import fs from 'node:fs';
 import path from 'node:path';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { Mock, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { MixpanelTelemetry } from '../../src/services/telemetry';
+import { MixpanelTelemetry, promptMetricsConsent } from '../../src/services/telemetry';
 import { IPC_CHANNELS } from '/src/constants';
 
 vi.mock('electron', () => ({
@@ -14,6 +14,8 @@ vi.mock('electron', () => ({
   ipcMain: {
     on: vi.fn(),
     once: vi.fn(),
+    handle: vi.fn(),
+    removeHandler: vi.fn(),
   },
 }));
 
@@ -183,5 +185,168 @@ describe('MixpanelTelemetry', () => {
 
     // This will fail because the initialized client isn't being assigned
     expect(telemetry['mixpanelClient']).toBe(mockInitializedClient);
+  });
+});
+
+describe('promptMetricsConsent', () => {
+  let store: { get: Mock; set: Mock };
+  let appWindow: { loadRenderer: Mock };
+  let comfyDesktopApp: { comfySettings: { get: Mock } };
+
+  const versionBeforeUpdate = '0.4.1';
+  const versionAfterUpdate = '1.0.1';
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    store = { get: vi.fn(), set: vi.fn() };
+    appWindow = { loadRenderer: vi.fn() };
+    comfyDesktopApp = { comfySettings: { get: vi.fn() } };
+  });
+
+  const runTest = async ({
+    storeValue,
+    settingsValue,
+    expectedResult,
+    mockConsent,
+    promptUser,
+  }: {
+    storeValue: string | null | undefined;
+    settingsValue: boolean | null | undefined;
+    expectedResult: boolean;
+    mockConsent?: boolean;
+    promptUser?: boolean;
+  }) => {
+    store.get.mockReturnValue(storeValue);
+    comfyDesktopApp.comfySettings.get.mockReturnValue(settingsValue);
+
+    if (promptUser) {
+      vi.mocked(ipcMain.handle).mockImplementationOnce((channel, handler) => {
+        if (channel === IPC_CHANNELS.SET_METRICS_CONSENT) {
+          // @ts-expect-error - handler is a mock and doesn't implement the correct signature
+          handler(null, mockConsent);
+        }
+      });
+    }
+
+    // @ts-expect-error - store is a mock and doesn't implement all of DesktopConfig
+    const result = await promptMetricsConsent(store, appWindow, comfyDesktopApp);
+    expect(result).toBe(expectedResult);
+
+    if (promptUser) ipcMain.removeHandler(IPC_CHANNELS.SET_METRICS_CONSENT);
+  };
+
+  it('should prompt for update if metrics were previously enabled', async () => {
+    await runTest({
+      storeValue: versionBeforeUpdate,
+      settingsValue: true,
+      expectedResult: true,
+      mockConsent: true,
+      promptUser: true,
+    });
+    expect(store.set).toHaveBeenCalled();
+    expect(appWindow.loadRenderer).toHaveBeenCalledWith('metrics-consent');
+    expect(ipcMain.handle).toHaveBeenCalledWith(IPC_CHANNELS.SET_METRICS_CONSENT, expect.any(Function));
+  });
+
+  it('should not show prompt if consent is up-to-date', async () => {
+    await runTest({
+      storeValue: versionAfterUpdate,
+      settingsValue: true,
+      expectedResult: true,
+    });
+    expect(store.get).toHaveBeenCalledWith('versionConsentedMetrics');
+    expect(store.set).not.toHaveBeenCalled();
+    expect(appWindow.loadRenderer).not.toHaveBeenCalled();
+    expect(ipcMain.handle).not.toHaveBeenCalled();
+  });
+
+  it('should return true if consent is up-to-date and metrics enabled', async () => {
+    await runTest({
+      storeValue: versionAfterUpdate,
+      settingsValue: true,
+      expectedResult: true,
+    });
+    expect(store.set).not.toHaveBeenCalled();
+  });
+
+  it('should return false if consent is up-to-date and metrics are disabled', async () => {
+    await runTest({
+      storeValue: versionAfterUpdate,
+      settingsValue: false,
+      expectedResult: false,
+    });
+    expect(store.set).not.toHaveBeenCalled();
+    expect(appWindow.loadRenderer).not.toHaveBeenCalled();
+    expect(ipcMain.handle).not.toHaveBeenCalled();
+  });
+
+  it('should return false if consent is out-of-date and metrics are disabled', async () => {
+    await runTest({
+      storeValue: versionBeforeUpdate,
+      settingsValue: false,
+      expectedResult: false,
+    });
+    expect(store.set).toHaveBeenCalled();
+    expect(appWindow.loadRenderer).not.toHaveBeenCalled();
+    expect(ipcMain.handle).not.toHaveBeenCalled();
+  });
+
+  it('should update consent to false if the user denies', async () => {
+    await runTest({
+      storeValue: versionBeforeUpdate,
+      settingsValue: true,
+      expectedResult: false,
+      mockConsent: false,
+      promptUser: true,
+    });
+    expect(store.set).toHaveBeenCalled();
+    expect(appWindow.loadRenderer).toHaveBeenCalledWith('metrics-consent');
+    expect(ipcMain.handle).toHaveBeenCalledWith(IPC_CHANNELS.SET_METRICS_CONSENT, expect.any(Function));
+  });
+
+  it('should return false if previous metrics setting is null', async () => {
+    await runTest({
+      storeValue: versionBeforeUpdate,
+      settingsValue: null,
+      expectedResult: false,
+    });
+    expect(store.set).toHaveBeenCalled();
+    expect(appWindow.loadRenderer).not.toHaveBeenCalled();
+    expect(ipcMain.handle).not.toHaveBeenCalled();
+  });
+
+  it('should prompt for update if versionConsentedMetrics is undefined', async () => {
+    await runTest({
+      storeValue: undefined,
+      settingsValue: true,
+      expectedResult: true,
+      mockConsent: true,
+      promptUser: true,
+    });
+    expect(store.set).toHaveBeenCalled();
+    expect(appWindow.loadRenderer).toHaveBeenCalledWith('metrics-consent');
+    expect(ipcMain.handle).toHaveBeenCalledWith(IPC_CHANNELS.SET_METRICS_CONSENT, expect.any(Function));
+  });
+
+  it('should return false if both settings are null or undefined', async () => {
+    await runTest({
+      storeValue: null,
+      settingsValue: null,
+      expectedResult: false,
+    });
+    expect(store.set).toHaveBeenCalled();
+    expect(appWindow.loadRenderer).not.toHaveBeenCalled();
+    expect(ipcMain.handle).not.toHaveBeenCalled();
+  });
+
+  it('should return false if metrics are disabled and consent is null', async () => {
+    await runTest({
+      storeValue: versionBeforeUpdate,
+      settingsValue: null,
+      expectedResult: false,
+    });
+    expect(store.set).toHaveBeenCalled();
+    expect(appWindow.loadRenderer).not.toHaveBeenCalled();
+    expect(ipcMain.handle).not.toHaveBeenCalled();
   });
 });

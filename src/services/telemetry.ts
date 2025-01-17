@@ -8,7 +8,11 @@ import path from 'node:path';
 import si from 'systeminformation';
 
 import { IPC_CHANNELS } from '../constants';
+import { AppWindow } from '../main-process/appWindow';
+import { ComfyDesktopApp } from '../main-process/comfyDesktopApp';
 import { InstallOptions } from '../preload';
+import { DesktopConfig } from '../store/desktopConfig';
+import { compareVersions } from '../utils';
 
 let instance: ITelemetry | null = null;
 export interface ITelemetry {
@@ -212,4 +216,31 @@ export function trackEvent(eventName: string) {
 
     return descriptor;
   };
+}
+
+/** @returns Whether the user has consented to sending metrics. */
+export async function promptMetricsConsent(
+  store: DesktopConfig,
+  appWindow: AppWindow,
+  comfyDesktopApp: ComfyDesktopApp
+): Promise<boolean> {
+  const isMetricsEnabled = comfyDesktopApp.comfySettings.get('Comfy-Desktop.SendStatistics') ?? false;
+  const consentedOn = store.get('versionConsentedMetrics');
+  const isOutdated = !consentedOn || compareVersions(consentedOn, '0.4.8') < 0;
+  if (!isOutdated) return isMetricsEnabled;
+
+  store.set('versionConsentedMetrics', __COMFYUI_DESKTOP_VERSION__);
+  if (isMetricsEnabled) {
+    const consentPromise = new Promise<boolean>((resolve) => {
+      ipcMain.handle(IPC_CHANNELS.SET_METRICS_CONSENT, (_event, consent: boolean) => {
+        resolve(consent);
+        ipcMain.removeHandler(IPC_CHANNELS.SET_METRICS_CONSENT);
+      });
+    });
+
+    await appWindow.loadRenderer('metrics-consent');
+    return consentPromise;
+  }
+
+  return isMetricsEnabled;
 }
