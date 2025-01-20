@@ -14,7 +14,7 @@ vi.mock('electron', () => ({
   ipcMain: {
     on: vi.fn(),
     once: vi.fn(),
-    handle: vi.fn(),
+    handleOnce: vi.fn(),
     removeHandler: vi.fn(),
   },
 }));
@@ -220,10 +220,9 @@ describe('promptMetricsConsent', () => {
     comfyDesktopApp.comfySettings.get.mockReturnValue(settingsValue);
 
     if (promptUser) {
-      vi.mocked(ipcMain.handle).mockImplementationOnce((channel, handler) => {
+      vi.mocked(ipcMain.handleOnce).mockImplementationOnce((channel, handler) => {
         if (channel === IPC_CHANNELS.SET_METRICS_CONSENT) {
-          // @ts-expect-error - handler is a mock and doesn't implement the correct signature
-          handler(null, mockConsent);
+          handler(null!, mockConsent);
         }
       });
     }
@@ -245,7 +244,7 @@ describe('promptMetricsConsent', () => {
     });
     expect(store.set).toHaveBeenCalled();
     expect(appWindow.loadRenderer).toHaveBeenCalledWith('metrics-consent');
-    expect(ipcMain.handle).toHaveBeenCalledWith(IPC_CHANNELS.SET_METRICS_CONSENT, expect.any(Function));
+    expect(ipcMain.handleOnce).toHaveBeenCalledWith(IPC_CHANNELS.SET_METRICS_CONSENT, expect.any(Function));
   });
 
   it('should not show prompt if consent is up-to-date', async () => {
@@ -257,7 +256,7 @@ describe('promptMetricsConsent', () => {
     expect(store.get).toHaveBeenCalledWith('versionConsentedMetrics');
     expect(store.set).not.toHaveBeenCalled();
     expect(appWindow.loadRenderer).not.toHaveBeenCalled();
-    expect(ipcMain.handle).not.toHaveBeenCalled();
+    expect(ipcMain.handleOnce).not.toHaveBeenCalled();
   });
 
   it('should return true if consent is up-to-date and metrics enabled', async () => {
@@ -277,7 +276,7 @@ describe('promptMetricsConsent', () => {
     });
     expect(store.set).not.toHaveBeenCalled();
     expect(appWindow.loadRenderer).not.toHaveBeenCalled();
-    expect(ipcMain.handle).not.toHaveBeenCalled();
+    expect(ipcMain.handleOnce).not.toHaveBeenCalled();
   });
 
   it('should return false if consent is out-of-date and metrics are disabled', async () => {
@@ -288,7 +287,7 @@ describe('promptMetricsConsent', () => {
     });
     expect(store.set).toHaveBeenCalled();
     expect(appWindow.loadRenderer).not.toHaveBeenCalled();
-    expect(ipcMain.handle).not.toHaveBeenCalled();
+    expect(ipcMain.handleOnce).not.toHaveBeenCalled();
   });
 
   it('should update consent to false if the user denies', async () => {
@@ -301,7 +300,7 @@ describe('promptMetricsConsent', () => {
     });
     expect(store.set).toHaveBeenCalled();
     expect(appWindow.loadRenderer).toHaveBeenCalledWith('metrics-consent');
-    expect(ipcMain.handle).toHaveBeenCalledWith(IPC_CHANNELS.SET_METRICS_CONSENT, expect.any(Function));
+    expect(ipcMain.handleOnce).toHaveBeenCalledWith(IPC_CHANNELS.SET_METRICS_CONSENT, expect.any(Function));
   });
 
   it('should return false if previous metrics setting is null', async () => {
@@ -312,7 +311,7 @@ describe('promptMetricsConsent', () => {
     });
     expect(store.set).toHaveBeenCalled();
     expect(appWindow.loadRenderer).not.toHaveBeenCalled();
-    expect(ipcMain.handle).not.toHaveBeenCalled();
+    expect(ipcMain.handleOnce).not.toHaveBeenCalled();
   });
 
   it('should prompt for update if versionConsentedMetrics is undefined', async () => {
@@ -325,7 +324,7 @@ describe('promptMetricsConsent', () => {
     });
     expect(store.set).toHaveBeenCalled();
     expect(appWindow.loadRenderer).toHaveBeenCalledWith('metrics-consent');
-    expect(ipcMain.handle).toHaveBeenCalledWith(IPC_CHANNELS.SET_METRICS_CONSENT, expect.any(Function));
+    expect(ipcMain.handleOnce).toHaveBeenCalledWith(IPC_CHANNELS.SET_METRICS_CONSENT, expect.any(Function));
   });
 
   it('should return false if both settings are null or undefined', async () => {
@@ -336,7 +335,7 @@ describe('promptMetricsConsent', () => {
     });
     expect(store.set).toHaveBeenCalled();
     expect(appWindow.loadRenderer).not.toHaveBeenCalled();
-    expect(ipcMain.handle).not.toHaveBeenCalled();
+    expect(ipcMain.handleOnce).not.toHaveBeenCalled();
   });
 
   it('should return false if metrics are disabled and consent is null', async () => {
@@ -347,6 +346,6 @@ describe('promptMetricsConsent', () => {
     });
     expect(store.set).toHaveBeenCalled();
     expect(appWindow.loadRenderer).not.toHaveBeenCalled();
-    expect(ipcMain.handle).not.toHaveBeenCalled();
+    expect(ipcMain.handleOnce).not.toHaveBeenCalled();
   });
 });
