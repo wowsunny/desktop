@@ -140,6 +140,7 @@ interface HardwareValidation {
  */
 export async function validateHardware(): Promise<HardwareValidation> {
   log.verbose('Validating hardware.');
+
   try {
     // Only ARM Macs are supported.
     if (process.platform === 'darwin') {
@@ -161,8 +162,9 @@ export async function validateHardware(): Promise<HardwareValidation> {
       const graphics = await si.graphics();
       const hasNvidia = graphics.controllers.some((controller) => controller.vendor.toLowerCase().includes('nvidia'));
 
-      if (process.env.CI) {
-        return { isValid: true }; // Temporary workaround for testing with Playwright
+      if (process.env.SKIP_HARDWARE_VALIDATION) {
+        console.log('Skipping hardware validation');
+        return { isValid: true };
       }
 
       if (!hasNvidia) {
