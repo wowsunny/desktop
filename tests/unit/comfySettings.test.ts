@@ -163,5 +163,21 @@ describe('ComfySettings', () => {
       await expectLogError();
       expect(settings.get('Comfy-Desktop.AutoUpdate')).toBe(DEFAULT_SETTINGS['Comfy-Desktop.AutoUpdate']);
     });
+
+    it('should handle attempts to save null settings', async () => {
+      const saveSettingsSpy = vi.spyOn(settings, 'saveSettings');
+      // @ts-expect-error: explicitly setting settings to null
+      settings['settings'] = null;
+      await settings.saveSettings();
+
+      expect(saveSettingsSpy).toHaveReturned();
+      expect(fs.writeFile).not.toHaveBeenCalled();
+    });
+
+    it('should log and throw error on write error during saveSettings', async () => {
+      vi.mocked(fs.writeFile).mockRejectedValue(new Error('Permission denied'));
+      await expect(settings.saveSettings()).rejects.toThrow('Permission denied');
+      await expectLogError();
+    });
   });
 });
