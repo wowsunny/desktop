@@ -227,7 +227,6 @@ export class ComfyDesktopApp implements HasTelemetry {
       return relaunchApplication(delay);
     }
 
-    // eslint-disable-next-line @typescript-eslint/no-floating-promises
     dialog
       .showMessageBox({
         type: 'question',
@@ -245,6 +244,9 @@ export class ComfyDesktopApp implements HasTelemetry {
         } else {
           log.info('User cancelled restart');
         }
+      })
+      .catch((error) => {
+        log.error('Error showing restart confirmation dialog:', error);
       });
   }
 }

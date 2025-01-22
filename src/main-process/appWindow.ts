@@ -331,8 +331,9 @@ export class AppWindow {
           this.show();
           // Mac Only
           if (process.platform === 'darwin') {
-            // eslint-disable-next-line @typescript-eslint/no-floating-promises
-            app.dock.show();
+            app.dock.show().catch((error) => {
+              log.error('Error showing dock', error);
+            });
           }
         },
       },
@@ -371,13 +372,16 @@ export class AppWindow {
       const aboutMenuItem = {
         label: 'About ComfyUI',
         click: () => {
-          // eslint-disable-next-line @typescript-eslint/no-floating-promises
-          dialog.showMessageBox({
-            title: 'About',
-            message: `ComfyUI v${app.getVersion()}`,
-            detail: 'Created by Comfy Org\nCopyright © 2024',
-            buttons: ['OK'],
-          });
+          dialog
+            .showMessageBox({
+              title: 'About',
+              message: `ComfyUI v${app.getVersion()}`,
+              detail: 'Created by Comfy Org\nCopyright © 2024',
+              buttons: ['OK'],
+            })
+            .catch((error) => {
+              log.error('Error showing about dialog', error);
+            });
         },
       };
       const helpMenuItem = menu.items.find((item) => item.role === 'help');
