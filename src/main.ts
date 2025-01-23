@@ -36,6 +36,13 @@ app.on('before-quit', () => {
   quitting = true;
 });
 
+app.on('quit', (event, exitCode) => {
+  telemetry.track('desktop:app_quit', {
+    reason: event,
+    exitCode,
+  });
+});
+
 // Sentry needs to be initialized at the top level.
 log.verbose('Initializing Sentry');
 SentryLogging.init();
