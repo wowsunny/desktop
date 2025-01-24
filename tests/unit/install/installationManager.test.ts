@@ -78,7 +78,7 @@ vi.mock('../../../src/virtualEnvironment', () => {
 const createMockAppWindow = () => {
   const mock = {
     send: vi.fn(),
-    loadRenderer: vi.fn().mockResolvedValue(null),
+    loadPage: vi.fn().mockResolvedValue(null),
     showOpenDialog: vi.fn(),
     maximize: vi.fn(),
   };
@@ -127,7 +127,7 @@ describe('InstallationManager', () => {
       expect(result).toBe(installation);
       expect(result.hasIssues).toBe(false);
       expect(result.isValid).toBe(true);
-      expect(mockAppWindow.loadRenderer).not.toHaveBeenCalledWith('maintenance');
+      expect(mockAppWindow.loadPage).not.toHaveBeenCalledWith('maintenance');
     });
 
     it.each([
@@ -181,7 +181,7 @@ describe('InstallationManager', () => {
         expect(finalValidation?.[error as keyof InstallValidation]).toBe('error');
       }
 
-      expect(mockAppWindow.loadRenderer).toHaveBeenCalledWith('maintenance');
+      expect(mockAppWindow.loadPage).toHaveBeenCalledWith('maintenance');
 
       cleanup?.();
     });

@@ -21,6 +21,9 @@ import type { ElectronContextMenuOptions } from '../preload';
 import { AppWindowSettings } from '../store/AppWindowSettings';
 import { useDesktopConfig } from '../store/desktopConfig';
 
+/** A frontend page that can be loaded by the app. */
+type Page = 'desktop-start' | 'welcome' | 'not-supported' | 'metrics-consent' | 'server-start' | '' | 'maintenance';
+
 /**
  * Creates a single application window that displays the renderer and encapsulates all the logic for sending messages to the renderer.
  * Closes the application when the window is closed.
@@ -174,10 +177,16 @@ export class AppWindow {
     this.window.maximize();
   }
 
-  public async loadRenderer(urlPath: string = ''): Promise<void> {
+  /**
+   * Loads a frontend page.
+   *
+   * In production, this is via the file:// protocol. Dev environments can utilise a dev server.
+   * @param page The page to load; a valid entry in the frontend router.
+   */
+  public async loadPage(page: Page): Promise<void> {
     const { devUrlOverride } = this;
     if (devUrlOverride) {
-      const url = `${devUrlOverride}/${urlPath}`;
+      const url = `${devUrlOverride}/${page}`;
       /**
        * rendererReady should be set by the frontend via electronAPI. However,
        * for some reason, the event is not being received if we load the app
@@ -191,7 +200,7 @@ export class AppWindow {
     } else {
       const appResourcesPath = getAppResourcesPath();
       const frontendPath = path.join(appResourcesPath, 'ComfyUI', 'web_custom_versions', 'desktop_app');
-      await this.window.loadFile(path.join(frontendPath, 'index.html'), { hash: urlPath });
+      await this.window.loadFile(path.join(frontendPath, 'index.html'), { hash: page });
     }
   }
 
