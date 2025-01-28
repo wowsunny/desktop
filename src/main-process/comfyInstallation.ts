@@ -30,19 +30,8 @@ export class ComfyInstallation {
     return this.state === 'installed' && !this.hasIssues;
   }
 
-  virtualEnvironment: VirtualEnvironment;
+  readonly virtualEnvironment: VirtualEnvironment;
   comfySettings: ComfySettings;
-
-  _basePath: string;
-  /** The base path of the desktop app.  Models, nodes, and configuration are saved here by default. */
-  get basePath() {
-    return this._basePath;
-  }
-  set basePath(value: string) {
-    // Duplicated in constructor to avoid non-nullable type assertions.
-    this._basePath = value;
-    this.virtualEnvironment = this.createVirtualEnvironment(value);
-  }
 
   /**
    * Called during/after each step of validation
@@ -54,13 +43,11 @@ export class ComfyInstallation {
     /** Installation state, e.g. `started`, `installed`.  See {@link DesktopSettings}. */
     public state: DesktopInstallState,
     /** The base path of the desktop app.  Models, nodes, and configuration are saved here by default. */
-    basePath: string,
+    public readonly basePath: string,
     /** The device type to use for the installation. */
     public readonly telemetry: ITelemetry,
     public device?: TorchDeviceType
   ) {
-    // TypeScript workaround: duplication of basePath setter
-    this._basePath = basePath;
     this.comfySettings = new ComfySettings(basePath);
     this.virtualEnvironment = this.createVirtualEnvironment(basePath);
   }
@@ -111,7 +98,7 @@ export class ComfyInstallation {
     }
 
     // Validate base path
-    const basePath = await this.loadBasePath();
+    const basePath = useDesktopConfig().get('basePath');
     if (basePath && (await pathAccessible(basePath))) {
       validation.basePath = 'OK';
       this.onUpdate?.(validation);
@@ -173,35 +160,6 @@ export class ComfyInstallation {
     this.onUpdate?.(validation);
 
     return validation.installState;
-  }
-
-  /**
-   * Loads the base path from YAML config. If it is unreadable, warns the user and quits.
-   * @returns The base path if read successfully, or `undefined`
-   * @throws If the config file is present but not readable
-   */
-  async loadBasePath(): Promise<string | undefined> {
-    const readResult = await ComfyServerConfig.readBasePathFromConfig(ComfyServerConfig.configPath);
-    switch (readResult.status) {
-      case 'success':
-        // TODO: Check if config.json basePath different, then determine why it has changed (intentional?)
-        this.basePath = readResult.path;
-        return readResult.path;
-      case 'invalid':
-        // TODO: File was there, and was valid YAML.  It just didn't have a valid base_path.
-        // Show path edit screen instead of reinstall.
-        return;
-      case 'notFound':
-        return;
-      default:
-        // 'error': Explain and quit
-        // TODO: Support link?  Something?
-        throw new Error(`Unable to read the YAML configuration file.  Please ensure this file is available and can be read:
-
-${ComfyServerConfig.configPath}
-
-If this problem persists, back up and delete the config file, then restart the app.`);
-    }
   }
 
   /**
