@@ -143,9 +143,11 @@ export class InstallationManager {
     const config = useDesktopConfig();
     config.set('installState', 'started');
 
+    // Check available GPU
     const hardware = await validateHardware();
     if (typeof hardware?.gpu === 'string') config.set('detectedGpu', hardware.gpu);
 
+    /** Resovles when the user has confirmed all install options */
     const optionsPromise = new Promise<InstallOptions>((resolve) => {
       ipcMain.once(IPC_CHANNELS.INSTALL_COMFYUI, (_event, installOptions: InstallOptions) => {
         log.verbose('Received INSTALL_COMFYUI.');
@@ -153,6 +155,7 @@ export class InstallationManager {
       });
     });
 
+    // Load the welcome page / unsupported hardware page
     if (!hardware.isValid) {
       log.error(hardware.error);
       log.verbose('Loading not-supported renderer.');
@@ -163,6 +166,7 @@ export class InstallationManager {
       await this.appWindow.loadPage('welcome');
     }
 
+    // Handover to frontend
     const installOptions = await optionsPromise;
     this.telemetry.track('desktop:install_options_received', {
       gpuType: installOptions.device,
@@ -171,33 +175,35 @@ export class InstallationManager {
       migrationItemIds: installOptions.migrationItemIds,
     });
 
-    const installWizard = new InstallWizard(installOptions, this.telemetry);
-    useDesktopConfig().set('basePath', installWizard.basePath);
-    useDesktopConfig().set('versionConsentedMetrics', __COMFYUI_DESKTOP_VERSION__);
-
+    // Save desktop config
     const { device } = installOptions;
-    if (device !== undefined) {
-      useDesktopConfig().set('selectedDevice', device);
+    useDesktopConfig().set('basePath', installOptions.installPath);
+    useDesktopConfig().set('versionConsentedMetrics', __COMFYUI_DESKTOP_VERSION__);
+    useDesktopConfig().set('selectedDevice', device);
+
+    // Load the next page
+    const page = device === 'unsupported' ? 'not-supported' : 'server-start';
+    if (!this.appWindow.isOnPage(page)) {
+      await this.appWindow.loadPage(page);
     }
 
+    // Creates folders and initializes ComfyUI settings
+    const installWizard = new InstallWizard(installOptions, this.telemetry);
     await installWizard.install();
+
     this.appWindow.maximize();
     const shouldMigrateCustomNodes =
       !!installWizard.migrationSource && installWizard.migrationItemIds.has('custom_nodes');
     if (shouldMigrateCustomNodes) {
       useDesktopConfig().set('migrateCustomNodesFrom', installWizard.migrationSource);
     }
-    const page = device === 'unsupported' ? 'not-supported' : 'server-start';
-    if (!this.appWindow.isOnPage(page)) {
-      await this.appWindow.loadPage(page);
-    }
-    this.appWindow.sendServerStartProgress(ProgressStatus.PYTHON_SETUP);
 
     const installation = new ComfyInstallation('installed', installWizard.basePath, this.telemetry, device);
     const { virtualEnvironment } = installation;
 
     installation.setState('installed');
 
+    // Virtual terminal output callbacks
     const processCallbacks: ProcessCallbacks = {
       onStdout: (data) => {
         log.info(data.replaceAll(ansiCodes, ''));
@@ -209,10 +215,12 @@ export class InstallationManager {
       },
     };
 
+    // Create virtual environment
     this.appWindow.sendServerStartProgress(ProgressStatus.PYTHON_SETUP);
     await virtualEnvironment.create(processCallbacks);
-    const customNodeMigrationError = await this.migrateCustomNodes(config, virtualEnvironment, processCallbacks);
 
+    // Migrate custom nodes
+    const customNodeMigrationError = await this.migrateCustomNodes(config, virtualEnvironment, processCallbacks);
     if (customNodeMigrationError) {
       // TODO: Replace with IPC callback to handle i18n (SoC).
       new Notification({
