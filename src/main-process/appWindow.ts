@@ -86,10 +86,12 @@ export class AppWindow {
       webPreferences: {
         // eslint-disable-next-line unicorn/prefer-module
         preload: path.join(__dirname, '../build/preload.cjs'),
-        nodeIntegration: true,
-        contextIsolation: true,
         webviewTag: true,
         devTools: true,
+        nodeIntegration: false, // 禁用 Node.js 集成
+        contextIsolation: true, // 启用上下文隔离
+        webSecurity: false, // 禁用 web 安全性（仅在开发过程中使用）
+        sandbox: false,
       },
       show: false,
       autoHideMenuBar: true,
@@ -148,7 +150,7 @@ export class AppWindow {
 
   public async loadComfyUI(serverArgs: ServerArgs) {
     const host = serverArgs.host === '0.0.0.0' ? 'localhost' : serverArgs.host;
-    const url = this.devUrlOverride ?? `http://${host}:${serverArgs.port}`;
+    const url = this.devUrlOverride ?? `http://${host}:${3000}`;
     await this.window.loadURL(url);
   }
 
@@ -202,6 +204,7 @@ export class AppWindow {
    */
   public async loadPage(page: Page): Promise<void> {
     const { devUrlOverride } = this;
+    this.window.webContents.openDevTools();
     if (devUrlOverride) {
       const url = `${devUrlOverride}/${page}`;
       /**
@@ -278,7 +281,7 @@ export class AppWindow {
   }
 
   private setupWindowEvents(): void {
-    // eslint-disable-next-line unicorn/consistent-function-scoping
+     
     const updateBounds = () => {
       if (!this.window) return;
 
