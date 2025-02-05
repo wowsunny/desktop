@@ -1,6 +1,6 @@
 import { Layout } from 'antd';
 
-import ComfyUIWrapper from '../ComfyUI';
+import ComfyUIWrapper from '../ComfyUIWrapper';
 import './index.less';
 
 const { Content, Header } = Layout;
